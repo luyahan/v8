@@ -63,8 +63,10 @@ using F5 = void*(void* p0, void* p1, int p2, int p3, int p4);
             << std::endl;
 
 typedef union {
+  uint32_t ui32val;
   int32_t i32val;
   int64_t i64val;
+  uint64_t ui64val
   float fval;
   double dval;
 } Param_T;
@@ -72,7 +74,9 @@ typedef union {
 static void SetParam(Param_T* params, float val) { params->fval = val; }
 static void SetParam(Param_T* params, double val) { params->dval = val; }
 static void SetParam(Param_T* params, int32_t val) { params->i32val = val; }
+static void SetParam(Param_T* params, uint32_t val) { params->ui32val = val; }
 static void SetParam(Param_T* params, int64_t val) { params->i64val = val; }
+static void SetParam(Param_T* params, uint64_t val) { params->ui64val = val; }
 
 template <typename T, typename std::enable_if<
                           std::is_same<float, T>::value>::type* = nullptr>
@@ -572,7 +576,7 @@ UTEST_LOAD_STORE(lw, sw, int32_t, 0x456AF894)
 // set the 32th least significant bit of
 // value-to-store to 1 to test
 // zero-extension by lwu
-UTEST_LOAD_STORE(lwu, sw, int32_t, 0x856AF894)
+UTEST_LOAD_STORE(lwu, sw, uint32_t, 0x856AF894)
 // due to sign-extension of lh
 // instruction, value-to-stored must have
 // its 16th least significant bit be 0
