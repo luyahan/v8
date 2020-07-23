@@ -258,7 +258,7 @@ void PrintStateValue(std::ostream& os, Isolate* isolate, Handle<Object> value,
       break;
     case MachineRepresentation::kFloat32:
     case MachineRepresentation::kFloat64:
-      os << value->Number();
+      os << value->Number() << " " << std::hex << bit_cast<int64_t>(value->Number())<< std::dec;
       break;
     case MachineRepresentation::kSimd128: {
       FixedArray vector = FixedArray::cast(*value);
@@ -883,6 +883,7 @@ class TestEnvironment : public HandleAndZoneScope {
                                          MachineRepresentation rep) {
     // Only generate a Constant if the operand is a source and we have a
     // constant with a compatible representation in stock.
+    rep = MachineRepresentation::kFloat32;
     bool generate_constant =
         (constraint != kCannotBeConstant) &&
         (allocated_constants_.find(rep) != allocated_constants_.end());
@@ -1202,7 +1203,7 @@ TEST(FuzzAssembleMove) {
   TestEnvironment env;
 
   Handle<FixedArray> state_in = env.GenerateInitialState();
-  ParallelMove* moves = env.GenerateRandomMoves(1000);
+  ParallelMove* moves = env.GenerateRandomMoves(1);
 
   Handle<FixedArray> expected = env.SimulateMoves(moves, state_in);
 
@@ -1215,7 +1216,7 @@ TEST(FuzzAssembleMove) {
     }
 
     Handle<Code> test = c.FinalizeForExecuting();
-    if (FLAG_print_code) {
+    if (1) {
       test->Print();
     }
 
