@@ -1043,6 +1043,9 @@ DEFINE_STRING(mcpu, "auto", "enable optimization for specific cpu")
 DEFINE_BOOL(partial_constant_pool, true,
             "enable use of partial constant pools (X64 only)")
 DEFINE_BOOL(debug_riscv, false, "enable debug prints")
+DEFINE_BOOL(debug_test, false, "enable debug test")
+DEFINE_BOOL(debug_ebrek, false, "enable debug test")
+DEFINE_INT(debug_num, 1000, "enable debug test")
 
 // Controlling source positions for Torque/CSA code.
 DEFINE_BOOL(enable_source_at_csa_bind, false,

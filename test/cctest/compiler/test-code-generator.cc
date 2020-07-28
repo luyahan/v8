@@ -258,7 +258,7 @@ void PrintStateValue(std::ostream& os, Isolate* isolate, Handle<Object> value,
       break;
     case MachineRepresentation::kFloat32:
     case MachineRepresentation::kFloat64:
-      os << value->Number();
+      os << value->Number() <<" 0x"<< std::hex << bit_cast<int64_t>(value->Number()) << std::dec;
       break;
     case MachineRepresentation::kSimd128: {
       FixedArray vector = FixedArray::cast(*value);
@@ -642,7 +642,7 @@ class TestEnvironment : public HandleAndZoneScope {
           // Float32 and back inside `setup` and `teardown`. Make sure the value
           // we pick fits in a Float32.
           Handle<HeapNumber> num = main_isolate()->factory()->NewHeapNumber(
-              static_cast<double>(DoubleToFloat32(rng_->NextDouble())));
+              static_cast<double>(DoubleToFloat32(0.564273)));
           state->set(i, *num);
           break;
         }
@@ -786,6 +786,16 @@ class TestEnvironment : public HandleAndZoneScope {
     for (int i = 0; i < static_cast<int>(layout_.size()); i++) {
       Handle<Object> actual_value{actual->get(i), main_isolate()};
       Handle<Object> expected_value{expected->get(i), main_isolate()};
+      if (FLAG_debug_test) {
+        std::ostringstream expected_str;
+        PrintStateValue(expected_str, main_isolate(), expected_value,
+                        layout_[i]);
+        std::ostringstream actual_str;
+        PrintStateValue(actual_str, main_isolate(), actual_value, layout_[i]);
+
+        std::cout << expected_str.str().c_str() << " vs "
+                  << actual_str.str().c_str() << std::endl;
+      }
       if (!CompareValues(actual_value, expected_value,
                          layout_[i].representation())) {
         std::ostringstream expected_str;
@@ -793,6 +803,7 @@ class TestEnvironment : public HandleAndZoneScope {
                         layout_[i]);
         std::ostringstream actual_str;
         PrintStateValue(actual_str, main_isolate(), actual_value, layout_[i]);
+        
         FATAL("Expected: '%s' but got '%s'", expected_str.str().c_str(),
               actual_str.str().c_str());
       }
@@ -837,6 +848,7 @@ class TestEnvironment : public HandleAndZoneScope {
 
     for (int i = 0; i < size;) {
       MachineRepresentation rep = CreateRandomMachineRepresentation();
+      rep = MachineRepresentation::kFloat32;
       MoveOperands mo(CreateRandomOperand(kNone, rep),
                       CreateRandomOperand(kCannotBeConstant, rep));
       // It isn't valid to call `AssembleMove` and `AssembleSwap` with redundant
@@ -1098,6 +1110,10 @@ class CodeGeneratorTester {
     CHECK(generator_->tasm()->pc_offset() > start);
   }
 
+  void ebreak(){
+     generator_->tasm()->ebreak();
+  }
+
   void CheckAssembleSwap(InstructionOperand* source,
                          InstructionOperand* destination) {
     int start = generator_->tasm()->pc_offset();
@@ -1202,7 +1218,7 @@ TEST(FuzzAssembleMove) {
   TestEnvironment env;
 
   Handle<FixedArray> state_in = env.GenerateInitialState();
-  ParallelMove* moves = env.GenerateRandomMoves(1000);
+  ParallelMove* moves = env.GenerateRandomMoves(FLAG_debug_num);
 
   Handle<FixedArray> expected = env.SimulateMoves(moves, state_in);
 
@@ -1211,11 +1227,19 @@ TEST(FuzzAssembleMove) {
     CodeGeneratorTester c(&env, extra_space);
 
     for (auto m : *moves) {
+      if (FLAG_debug_test) {
+        std::cout << m->source() << std::endl;
+        std::cout << m->destination() << std::endl;
+      }
+      if(FLAG_debug_ebrek){
+        c.ebreak();
+      }
+
       c.CheckAssembleMove(&m->source(), &m->destination());
     }
 
     Handle<Code> test = c.FinalizeForExecuting();
-    if (FLAG_print_code) {
+    if (FLAG_debug_riscv) {
       test->Print();
     }
 
