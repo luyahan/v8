@@ -2226,13 +2226,14 @@ TEST(RunUint32MulHighP) {
   RawMachineAssemblerTester<int32_t> m;
   Int32BinopTester bt(&m);
   bt.AddReturn(m.Uint32MulHigh(bt.param0, bt.param1));
-  FOR_UINT32_INPUTS(i) {
-    FOR_UINT32_INPUTS(j) {
-      int32_t expected = bit_cast<int32_t>(static_cast<uint32_t>(
-          (static_cast<uint64_t>(i) * static_cast<uint64_t>(j)) >> 32));
-      CHECK_EQ(expected, bt.call(bit_cast<int32_t>(i), bit_cast<int32_t>(j)));
-    }
-  }
+  uint32_t i = 4294967295, j = 4294967295;
+  int32_t expected = bit_cast<int32_t>(static_cast<uint32_t>(
+      (static_cast<uint64_t>(i) * static_cast<uint64_t>(j)) >> 32));
+  std::cout << expected << "," << bt.call(bit_cast<int32_t>(i), bit_cast<int32_t>(j))
+            << "," << i << "," << j << std::endl;
+  std::cout << sizeof(expected) << "," << sizeof(bt.call(bit_cast<int32_t>(i), bit_cast<int32_t>(j))) << std::endl;
+  int32_t result = bt.call(bit_cast<int32_t>(i), bit_cast<int32_t>(j));
+  CHECK_EQ(expected, bt.call(bit_cast<int32_t>(i), bit_cast<int32_t>(j)));
 }
 
 
