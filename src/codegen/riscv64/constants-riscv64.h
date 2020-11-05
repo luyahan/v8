@@ -1040,7 +1040,7 @@ class InstructionGetters : public T {
     uint32_t Bits = this->InstructionBits();
     int32_t uimm10 = ((Bits & 0x20) >> 2) | ((Bits & 0x40) >> 4)
                   | ((Bits & 0x780) >> 1) | ((Bits & 0x1800) >> 7);
-    DCHECK(uimm10 != 0);
+    //DCHECK(uimm10 != 0);
     return uimm10;
   }
 
@@ -1149,7 +1149,7 @@ class Instruction : public InstructionGetters<InstructionBase> {
 // C/C++ argument slots size.
 const int kCArgSlotCount = 0;
 
-// TODO(plind): below should be based on kPointerSize
+// TODO(plind): below should be based on kSystemPointerSize
 // TODO(plind): find all usages and remove the needless instructions for n64.
 const int kCArgsSlotsSize = kCArgSlotCount * kInstrSize * 2;
 

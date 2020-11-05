@@ -2724,21 +2724,20 @@ void Assembler::CheckTrampolinePool() {
 
 void Assembler::set_target_address_at(Address pc, Address constant_pool,
                                       Address target,
-      ICacheFlushMode icache_flush_mode) {
-    Instr* instr = reinterpret_cast<Instr*>(pc);
+                                      ICacheFlushMode icache_flush_mode) {
+  Instr* instr = reinterpret_cast<Instr*>(pc);
   if (IsAuipc(*instr)) {
     DCHECK(IsLd(*reinterpret_cast<Instr*>(pc + 4)));
     int32_t Hi20 = AuipcOffset(*instr);
     int32_t Lo12 = LdOffset(*reinterpret_cast<Instr*>(pc + 4));
     Memory<Address>(pc + Hi20 + Lo12) = target;
-      if (icache_flush_mode != SKIP_ICACHE_FLUSH) {
+    if (icache_flush_mode != SKIP_ICACHE_FLUSH) {
       FlushInstructionCache(pc + Hi20 + Lo12, 2 * kInstrSize);
-      }
-    } else {
-      set_target_address_at(pc, target, icache_flush_mode);
     }
+  } else {
+    set_target_address_at(pc, target, icache_flush_mode);
   }
-
+}
 Address Assembler::target_address_at(Address pc, Address constant_pool) {
   Instr* instr = reinterpret_cast<Instr*>(pc);
   if (IsAuipc(*instr)) {

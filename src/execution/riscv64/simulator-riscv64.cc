@@ -3307,8 +3307,21 @@ void Simulator::InstructionDecode(Instruction* instr) {
     // Use a reasonably large buffer.
     dasm.InstructionDecode(buffer, reinterpret_cast<byte*>(instr));
 
-    // PrintF("EXECUTING  0x%08" PRIxPTR "   %-44s\n",
-    //       reinterpret_cast<intptr_t>(instr), buffer.begin());
+    std::cout << std::hex << "a0 = 0x" << get_register(a0)
+              << "\ta1  = 0x" << get_register(a1) 
+              << "\ta2  = 0x" << get_register(a2) 
+              << "\ta3  = 0x" << get_register(a3)
+              << "\ta4  = 0x" << get_register(a4) 
+              << "\ta5  = 0x" << get_register(a5)
+              << "\ta6  = 0x" << get_register(a6) 
+              << "\ta7  = 0x" << get_register(a7) 
+              << "\nt1  = 0x" << get_register(t1)
+              << "\tt2  = 0x" << get_register(t2) 
+              << "\tt3  = 0x" << get_register(t3)
+              << "\tt4  = 0x" << get_register(t4) 
+              << std::endl;
+    PrintF("EXECUTING  0x%08" PRIxPTR "   %-44s\n",
+          reinterpret_cast<intptr_t>(instr), buffer.begin());
   }
 
   instr_ = instr;
@@ -3367,11 +3380,11 @@ void Simulator::InstructionDecode(Instruction* instr) {
       UNSUPPORTED();
   }
 
-  if (::v8::internal::FLAG_trace_sim) {
-    PrintF("  0x%012" PRIxPTR "   %-44s   %s\n",
-           reinterpret_cast<intptr_t>(instr), buffer.begin(),
-           trace_buf_.begin());
-  }
+  // if (::v8::internal::FLAG_trace_sim) {
+  //   PrintF("  0x%012" PRIxPTR "   %-44s   %s\n",
+  //          reinterpret_cast<intptr_t>(instr), buffer.begin(),
+  //          trace_buf_.begin());
+  // }
 
   if (!pc_modified_) {
     set_register(pc, reinterpret_cast<int64_t>(instr) + instr->InstructionSize());
