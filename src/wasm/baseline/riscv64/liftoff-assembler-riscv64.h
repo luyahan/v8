@@ -394,9 +394,9 @@ void LiftoffAssembler::LoadTaggedPointer(Register dst, Register src_addr,
                                          int32_t offset_imm,
                                          LiftoffRegList pinned) {
   DCHECK_GE(offset_imm, 0);
-  STATIC_ASSERT(kTaggedSize == kInt64Size);
-  Load(LiftoffRegister(dst), src_addr, offset_reg,
-       static_cast<uint32_t>(offset_imm), LoadType::kI64Load, pinned);
+  MemOperand src_op =
+      liftoff::GetMemOp(this, src_addr, offset_reg, offset_imm);
+  LoadTaggedPointerField(dst, src_op);
 }
 
 void LiftoffAssembler::StoreTaggedPointer(Register dst_addr, int32_t offset_imm,
@@ -404,9 +404,9 @@ void LiftoffAssembler::StoreTaggedPointer(Register dst_addr, int32_t offset_imm,
                                           LiftoffRegList pinned) {
   DCHECK_GE(offset_imm, 0);
   DCHECK_LE(offset_imm, std::numeric_limits<int32_t>::max());
-  STATIC_ASSERT(kTaggedSize == kInt64Size);
   Register scratch = pinned.set(GetUnusedRegister(kGpReg, pinned)).gp();
-  Sd(src.gp(), MemOperand(dst_addr, offset_imm));
+  MemOperand dst_op(dst_addr, offset_imm);
+  StoreTaggedField(src.gp(), dst_op);
 
   Label write_barrier;
   Label exit;
@@ -416,6 +416,9 @@ void LiftoffAssembler::StoreTaggedPointer(Register dst_addr, int32_t offset_imm,
   Branch(&exit);
   bind(&write_barrier);
   JumpIfSmi(src.gp(), &exit);
+  if (COMPRESS_POINTERS_BOOL) {
+    DecompressTaggedPointer(src.gp(), src.gp());
+  }
   CheckPageFlag(src.gp(), scratch,
                 MemoryChunk::kPointersToHereAreInterestingMask, eq, &exit);
   Add64(scratch, dst_addr, offset_imm);
