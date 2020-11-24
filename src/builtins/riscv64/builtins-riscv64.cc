@@ -77,7 +77,9 @@ void Generate_JSBuiltinsConstructStubHelper(MacroAssembler* masm) {
   //  -- ra     : return address
   //  -- sp[...]: constructor arguments
   // -----------------------------------
+  Label stack_overflow;
 
+  Generate_StackOverflowCheck(masm, a0, t0, t1, &stack_overflow);
   // Enter a construct frame.
   {
     FrameScope scope(masm, StackFrame::CONSTRUCT);
@@ -114,8 +116,17 @@ void Generate_JSBuiltinsConstructStubHelper(MacroAssembler* masm) {
   __ Add64(sp, sp, t3);
   __ Add64(sp, sp, kSystemPointerSize);
   __ Ret();
-}
 
+<<<<<<< HEAD
+=======
+  __ bind(&stack_overflow);
+  {
+    FrameScope scope(masm, StackFrame::INTERNAL);
+    __ CallRuntime(Runtime::kThrowStackOverflow);
+    __ break_(0xCC);
+  }
+}
+>>>>>>> d9500ca1c2b... 11.24
 }  // namespace
 
 // The construct stub for ES5 constructor functions and ES6 class constructors.
@@ -128,7 +139,6 @@ void Builtins::Generate_JSConstructStubGeneric(MacroAssembler* masm) {
   //  --      ra: return address
   //  -- sp[...]: constructor arguments
   // -----------------------------------
-
   // Enter a construct frame.
   FrameScope scope(masm, StackFrame::MANUAL);
   Label post_instantiation_deopt_entry, not_create_implicit_receiver;
@@ -387,7 +397,7 @@ void Builtins::Generate_ResumeGeneratorTrampoline(MacroAssembler* masm) {
     __ Branch(&loop);
     __ bind(&done_loop);
     // Push receiver
-    __ LoadTaggedPointerField(
+    __ LoadAnyTaggedField(
         kScratchReg, FieldMemOperand(a1, JSGeneratorObject::kReceiverOffset));
     __ Push(kScratchReg);
   }
