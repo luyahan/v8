@@ -48,6 +48,8 @@ class Boolean;
 class BooleanObject;
 class CFunction;
 class Context;
+class CppHeap;
+struct CppHeapCreateParams;
 class Data;
 class Date;
 class External;
@@ -1195,7 +1197,7 @@ class TracedReference : public BasicTracedReference<T> {
  * handle and may deallocate it.  The behavior of accessing a handle
  * for which the handle scope has been deleted is undefined.
  */
-class V8_EXPORT HandleScope {
+class V8_EXPORT V8_NODISCARD HandleScope {
  public:
   explicit HandleScope(Isolate* isolate);
 
@@ -1242,12 +1244,11 @@ class V8_EXPORT HandleScope {
   friend class Context;
 };
 
-
 /**
  * A HandleScope which first allocates a handle in the current scope
  * which will be later filled with the escape value.
  */
-class V8_EXPORT EscapableHandleScope : public HandleScope {
+class V8_EXPORT V8_NODISCARD EscapableHandleScope : public HandleScope {
  public:
   explicit EscapableHandleScope(Isolate* isolate);
   V8_INLINE ~EscapableHandleScope() = default;
@@ -1288,7 +1289,7 @@ class V8_EXPORT EscapableHandleScope : public HandleScope {
  * are allowed. It can be useful for debugging handle leaks.
  * Handles can be allocated within inner normal HandleScopes.
  */
-class V8_EXPORT SealHandleScope {
+class V8_EXPORT V8_NODISCARD SealHandleScope {
  public:
   explicit SealHandleScope(Isolate* isolate);
   ~SealHandleScope();
@@ -1308,7 +1309,6 @@ class V8_EXPORT SealHandleScope {
   internal::Address* prev_limit_;
   int prev_sealed_level_;
 };
-
 
 // --- Special objects ---
 
@@ -1422,10 +1422,10 @@ class ScriptOriginOptions {
  */
 class ScriptOrigin {
  public:
-  V8_INLINE ScriptOrigin(
-      Local<Value> resource_name,
-      Local<Integer> resource_line_offset = Local<Integer>(),
-      Local<Integer> resource_column_offset = Local<Integer>(),
+  V8_DEPRECATE_SOON("Use constructor with primitvie C++ types")
+  V8_INLINE explicit ScriptOrigin(
+      Local<Value> resource_name, Local<Integer> resource_line_offset,
+      Local<Integer> resource_column_offset,
       Local<Boolean> resource_is_shared_cross_origin = Local<Boolean>(),
       Local<Integer> script_id = Local<Integer>(),
       Local<Value> source_map_url = Local<Value>(),
@@ -1433,21 +1433,36 @@ class ScriptOrigin {
       Local<Boolean> is_wasm = Local<Boolean>(),
       Local<Boolean> is_module = Local<Boolean>(),
       Local<PrimitiveArray> host_defined_options = Local<PrimitiveArray>());
+  V8_INLINE explicit ScriptOrigin(
+      Local<Value> resource_name, int resource_line_offset = 0,
+      int resource_column_offset = 0,
+      bool resource_is_shared_cross_origin = false, int script_id = -1,
+      Local<Value> source_map_url = Local<Value>(),
+      bool resource_is_opaque = false, bool is_wasm = false,
+      bool is_module = false,
+      Local<PrimitiveArray> host_defined_options = Local<PrimitiveArray>());
 
   V8_INLINE Local<Value> ResourceName() const;
+  V8_DEPRECATE_SOON("Use getter with primitvie C++ types.")
   V8_INLINE Local<Integer> ResourceLineOffset() const;
+  V8_DEPRECATE_SOON("Use getter with primitvie C++ types.")
   V8_INLINE Local<Integer> ResourceColumnOffset() const;
+  V8_DEPRECATE_SOON("Use getter with primitvie C++ types.")
   V8_INLINE Local<Integer> ScriptID() const;
+  V8_INLINE int LineOffset() const;
+  V8_INLINE int ColumnOffset() const;
+  V8_INLINE int ScriptId() const;
   V8_INLINE Local<Value> SourceMapUrl() const;
   V8_INLINE Local<PrimitiveArray> HostDefinedOptions() const;
   V8_INLINE ScriptOriginOptions Options() const { return options_; }
 
  private:
+  Isolate* isolate_;
   Local<Value> resource_name_;
-  Local<Integer> resource_line_offset_;
-  Local<Integer> resource_column_offset_;
+  int resource_line_offset_;
+  int resource_column_offset_;
   ScriptOriginOptions options_;
-  Local<Integer> script_id_;
+  int script_id_;
   Local<Value> source_map_url_;
   Local<PrimitiveArray> host_defined_options_;
 };
@@ -1507,6 +1522,43 @@ class V8_EXPORT Location {
 };
 
 /**
+ * A fixed-sized array with elements of type Data.
+ */
+class V8_EXPORT FixedArray : public Data {
+ public:
+  int Length() const;
+  Local<Data> Get(Local<Context> context, int i) const;
+};
+
+class V8_EXPORT ModuleRequest : public Data {
+ public:
+  /**
+   * Returns the module specifier for this ModuleRequest.
+   */
+  Local<String> GetSpecifier() const;
+
+  /**
+   * Returns the source code offset of this module request.
+   * Use Module::SourceOffsetToLocation to convert this to line/column numbers.
+   */
+  int GetSourceOffset() const;
+
+  /**
+   * Contains the import assertions for this request in the form:
+   * [key1, value1, source_offset1, key2, value2, source_offset2, ...].
+   * The keys and values are of type v8::String, and the source offsets are of
+   * type Int32. Use Module::SourceOffsetToLocation to convert the source
+   * offsets to Locations with line/column numbers.
+   */
+  Local<FixedArray> GetImportAssertions() const;
+
+  V8_INLINE static ModuleRequest* Cast(Data* data);
+
+ private:
+  static void CheckCast(Data* obj);
+};
+
+/**
  * A compiled JavaScript module.
  */
 class V8_EXPORT Module : public Data {
@@ -1540,19 +1592,36 @@ class V8_EXPORT Module : public Data {
   /**
    * Returns the number of modules requested by this module.
    */
+  V8_DEPRECATE_SOON("Use Module::GetModuleRequests() and FixedArray::Length().")
   int GetModuleRequestsLength() const;
 
   /**
    * Returns the ith module specifier in this module.
    * i must be < GetModuleRequestsLength() and >= 0.
    */
+  V8_DEPRECATE_SOON(
+      "Use Module::GetModuleRequests() and ModuleRequest::GetSpecifier().")
   Local<String> GetModuleRequest(int i) const;
 
   /**
    * Returns the source location (line number and column number) of the ith
    * module specifier's first occurrence in this module.
    */
+  V8_DEPRECATE_SOON(
+      "Use Module::GetModuleRequests(), ModuleRequest::GetSourceOffset(), and "
+      "Module::SourceOffsetToLocation().")
   Location GetModuleRequestLocation(int i) const;
+
+  /**
+   * Returns the ModuleRequests for this module.
+   */
+  Local<FixedArray> GetModuleRequests() const;
+
+  /**
+   * For the given source text offset in this module, returns the corresponding
+   * Location with line and column numbers.
+   */
+  Location SourceOffsetToLocation(int offset) const;
 
   /**
    * Returns the identity hash for this object.
@@ -1654,7 +1723,7 @@ class V8_EXPORT Module : public Data {
    */
   V8_WARN_UNUSED_RESULT Maybe<bool> SetSyntheticModuleExport(
       Isolate* isolate, Local<String> export_name, Local<Value> export_value);
-  V8_DEPRECATE_SOON(
+  V8_DEPRECATED(
       "Use the preceding SetSyntheticModuleExport with an Isolate parameter, "
       "instead of the one that follows.  The former will throw a runtime "
       "error if called for an export that doesn't exist (as per spec); "
@@ -1746,8 +1815,8 @@ class V8_EXPORT ScriptCompiler {
     // Source takes ownership of CachedData.
     V8_INLINE Source(Local<String> source_string, const ScriptOrigin& origin,
                      CachedData* cached_data = nullptr);
-    V8_INLINE Source(Local<String> source_string,
-                     CachedData* cached_data = nullptr);
+    V8_INLINE explicit Source(Local<String> source_string,
+                              CachedData* cached_data = nullptr);
     V8_INLINE ~Source();
 
     // Ownership of the CachedData or its buffers is *not* transferred to the
@@ -1768,8 +1837,8 @@ class V8_EXPORT ScriptCompiler {
 
     // Origin information
     Local<Value> resource_name;
-    Local<Integer> resource_line_offset;
-    Local<Integer> resource_column_offset;
+    int resource_line_offset;
+    int resource_column_offset;
     ScriptOriginOptions resource_options;
     Local<Value> source_map_url;
     Local<PrimitiveArray> host_defined_options;
@@ -1839,7 +1908,7 @@ class V8_EXPORT ScriptCompiler {
    public:
     enum Encoding { ONE_BYTE, TWO_BYTE, UTF8 };
 
-    V8_DEPRECATE_SOON(
+    V8_DEPRECATED(
         "This class takes ownership of source_stream, so use the constructor "
         "taking a unique_ptr to make these semantics clearer")
     StreamedSource(ExternalSourceStream* source_stream, Encoding encoding);
@@ -1946,12 +2015,15 @@ class V8_EXPORT ScriptCompiler {
    * This API allows to start the streaming with as little data as possible, and
    * the remaining data (for example, the ScriptOrigin) is passed to Compile.
    */
-  V8_DEPRECATE_SOON("Use ScriptCompiler::StartStreamingScript instead.")
+  V8_DEPRECATED("Use ScriptCompiler::StartStreaming instead.")
   static ScriptStreamingTask* StartStreamingScript(
       Isolate* isolate, StreamedSource* source,
       CompileOptions options = kNoCompileOptions);
   static ScriptStreamingTask* StartStreaming(Isolate* isolate,
                                              StreamedSource* source);
+  // The same as ScriptCompiler::StartStreaming but for module scripts.
+  static ScriptStreamingTask* StartStreamingModule(Isolate* isolate,
+                                                   StreamedSource* source);
 
   /**
    * Compiles a streamed script (bound to current context).
@@ -1995,6 +2067,17 @@ class V8_EXPORT ScriptCompiler {
       Isolate* isolate, Source* source,
       CompileOptions options = kNoCompileOptions,
       NoCacheReason no_cache_reason = kNoCacheNoReason);
+
+  /**
+   * Compiles a streamed module script.
+   *
+   * This can only be called after the streaming has finished
+   * (ScriptStreamingTask has been run). V8 doesn't construct the source string
+   * during streaming, so the embedder needs to pass the full source here.
+   */
+  static V8_WARN_UNUSED_RESULT MaybeLocal<Module> CompileModule(
+      Local<Context> context, StreamedSource* v8_source,
+      Local<String> full_source_string, const ScriptOrigin& origin);
 
   /**
    * Compile a function for a given context. This is equivalent to running
@@ -3132,14 +3215,6 @@ class V8_EXPORT String : public Name {
   V8_INLINE static Local<String> Empty(Isolate* isolate);
 
   /**
-   * Returns true if the string is external two-byte.
-   *
-   */
-  V8_DEPRECATED(
-      "Use String::IsExternalTwoByte() or String::IsExternalOneByte()")
-  bool IsExternal() const;
-
-  /**
    * Returns true if the string is both external and two-byte.
    */
   bool IsExternalTwoByte() const;
@@ -3452,7 +3527,7 @@ class V8_EXPORT Symbol : public Name {
    */
   Local<Value> Description() const;
 
-  V8_DEPRECATE_SOON("Use Symbol::Description()")
+  V8_DEPRECATED("Use Symbol::Description()")
   Local<Value> Name() const { return Description(); }
 
   /**
@@ -7228,36 +7303,11 @@ class V8_EXPORT ResourceConstraints {
     initial_young_generation_size_ = initial_size;
   }
 
-  /**
-   * Deprecated functions. Do not use in new code.
-   */
-  V8_DEPRECATED("Use code_range_size_in_bytes.")
-  size_t code_range_size() const { return code_range_size_ / kMB; }
-  V8_DEPRECATED("Use set_code_range_size_in_bytes.")
-  void set_code_range_size(size_t limit_in_mb) {
-    code_range_size_ = limit_in_mb * kMB;
-  }
-  V8_DEPRECATED("Use max_young_generation_size_in_bytes.")
-  size_t max_semi_space_size_in_kb() const;
-  V8_DEPRECATED("Use set_max_young_generation_size_in_bytes.")
-  void set_max_semi_space_size_in_kb(size_t limit_in_kb);
-  V8_DEPRECATED("Use max_old_generation_size_in_bytes.")
-  size_t max_old_space_size() const { return max_old_generation_size_ / kMB; }
-  V8_DEPRECATED("Use set_max_old_generation_size_in_bytes.")
-  void set_max_old_space_size(size_t limit_in_mb) {
-    max_old_generation_size_ = limit_in_mb * kMB;
-  }
-  V8_DEPRECATED("Zone does not pool memory any more.")
-  size_t max_zone_pool_size() const { return max_zone_pool_size_; }
-  V8_DEPRECATED("Zone does not pool memory any more.")
-  void set_max_zone_pool_size(size_t bytes) { max_zone_pool_size_ = bytes; }
-
  private:
   static constexpr size_t kMB = 1048576u;
   size_t code_range_size_ = 0;
   size_t max_old_generation_size_ = 0;
   size_t max_young_generation_size_ = 0;
-  size_t max_zone_pool_size_ = 0;
   size_t initial_old_generation_size_ = 0;
   size_t initial_young_generation_size_ = 0;
   uint32_t* stack_limit_ = nullptr;
@@ -7433,8 +7483,6 @@ class PromiseRejectMessage {
 typedef void (*PromiseRejectCallback)(PromiseRejectMessage message);
 
 // --- Microtasks Callbacks ---
-V8_DEPRECATED("Use *WithData version.")
-typedef void (*MicrotasksCompletedCallback)(Isolate*);
 typedef void (*MicrotasksCompletedCallbackWithData)(Isolate*, void*);
 typedef void (*MicrotaskCallback)(void* data);
 
@@ -7540,7 +7588,7 @@ class V8_EXPORT MicrotaskQueue {
  * kDoNotRunMicrotasks should be used to annotate calls not intended to trigger
  * microtasks.
  */
-class V8_EXPORT MicrotasksScope {
+class V8_EXPORT V8_NODISCARD MicrotasksScope {
  public:
   enum Type { kRunMicrotasks, kDoNotRunMicrotasks };
 
@@ -7572,7 +7620,6 @@ class V8_EXPORT MicrotasksScope {
   internal::MicrotaskQueue* const microtask_queue_;
   bool run_;
 };
-
 
 // --- Failed Access Check Callback ---
 typedef void (*FailedAccessCheckCallback)(Local<Object> target,
@@ -8276,26 +8323,15 @@ class V8_EXPORT Isolate {
   /**
    * Initial configuration parameters for a new Isolate.
    */
-  struct CreateParams {
-    CreateParams()
-        : code_event_handler(nullptr),
-          snapshot_blob(nullptr),
-          counter_lookup_callback(nullptr),
-          create_histogram_callback(nullptr),
-          add_histogram_sample_callback(nullptr),
-          array_buffer_allocator(nullptr),
-          array_buffer_allocator_shared(),
-          external_references(nullptr),
-          allow_atomics_wait(true),
-          only_terminate_in_safe_scope(false),
-          embedder_wrapper_type_index(-1),
-          embedder_wrapper_object_index(-1) {}
+  struct V8_EXPORT CreateParams {
+    CreateParams();
+    ~CreateParams();
 
     /**
      * Allows the host application to provide the address of a function that is
      * notified each time code is added, moved or removed.
      */
-    JitCodeEventHandler code_event_handler;
+    JitCodeEventHandler code_event_handler = nullptr;
 
     /**
      * ResourceConstraints to use for the new Isolate.
@@ -8305,14 +8341,13 @@ class V8_EXPORT Isolate {
     /**
      * Explicitly specify a startup snapshot blob. The embedder owns the blob.
      */
-    StartupData* snapshot_blob;
-
+    StartupData* snapshot_blob = nullptr;
 
     /**
      * Enables the host application to provide a mechanism for recording
      * statistics counters.
      */
-    CounterLookupCallback counter_lookup_callback;
+    CounterLookupCallback counter_lookup_callback = nullptr;
 
     /**
      * Enables the host application to provide a mechanism for recording
@@ -8320,8 +8355,8 @@ class V8_EXPORT Isolate {
      * histogram which will later be passed to the AddHistogramSample
      * function.
      */
-    CreateHistogramCallback create_histogram_callback;
-    AddHistogramSampleCallback add_histogram_sample_callback;
+    CreateHistogramCallback create_histogram_callback = nullptr;
+    AddHistogramSampleCallback add_histogram_sample_callback = nullptr;
 
     /**
      * The ArrayBuffer::Allocator to use for allocating and freeing the backing
@@ -8332,7 +8367,7 @@ class V8_EXPORT Isolate {
      * to the allocator, in order to facilitate lifetime
      * management for the allocator instance.
      */
-    ArrayBuffer::Allocator* array_buffer_allocator;
+    ArrayBuffer::Allocator* array_buffer_allocator = nullptr;
     std::shared_ptr<ArrayBuffer::Allocator> array_buffer_allocator_shared;
 
     /**
@@ -8341,34 +8376,43 @@ class V8_EXPORT Isolate {
      * deserialization. This array and its content must stay valid for the
      * entire lifetime of the isolate.
      */
-    const intptr_t* external_references;
+    const intptr_t* external_references = nullptr;
 
     /**
      * Whether calling Atomics.wait (a function that may block) is allowed in
      * this isolate. This can also be configured via SetAllowAtomicsWait.
      */
-    bool allow_atomics_wait;
+    bool allow_atomics_wait = true;
 
     /**
      * Termination is postponed when there is no active SafeForTerminationScope.
      */
-    bool only_terminate_in_safe_scope;
+    bool only_terminate_in_safe_scope = false;
 
     /**
      * The following parameters describe the offsets for addressing type info
      * for wrapped API objects and are used by the fast C API
      * (for details see v8-fast-api-calls.h).
      */
-    int embedder_wrapper_type_index;
-    int embedder_wrapper_object_index;
-  };
+    int embedder_wrapper_type_index = -1;
+    int embedder_wrapper_object_index = -1;
 
+    /**
+     * If parameters are set, V8 creates a managed C++ heap as extension to its
+     * JavaScript heap.
+     *
+     * See v8::Isolate::GetCppHeap() for working with the heap.
+     *
+     * This is an experimental feature and may still change significantly.
+     */
+    std::shared_ptr<CppHeapCreateParams> cpp_heap_params;
+  };
 
   /**
    * Stack-allocated class which sets the isolate for all operations
    * executed within a local scope.
    */
-  class V8_EXPORT Scope {
+  class V8_EXPORT V8_NODISCARD Scope {
    public:
     explicit Scope(Isolate* isolate) : isolate_(isolate) {
       isolate->Enter();
@@ -8384,11 +8428,10 @@ class V8_EXPORT Isolate {
     Isolate* const isolate_;
   };
 
-
   /**
    * Assert that no Javascript code is invoked.
    */
-  class V8_EXPORT DisallowJavascriptExecutionScope {
+  class V8_EXPORT V8_NODISCARD DisallowJavascriptExecutionScope {
    public:
     enum OnFailure { CRASH_ON_FAILURE, THROW_ON_FAILURE, DUMP_ON_FAILURE };
 
@@ -8406,11 +8449,10 @@ class V8_EXPORT Isolate {
     void* internal_;
   };
 
-
   /**
    * Introduce exception to DisallowJavascriptExecutionScope.
    */
-  class V8_EXPORT AllowJavascriptExecutionScope {
+  class V8_EXPORT V8_NODISCARD AllowJavascriptExecutionScope {
    public:
     explicit AllowJavascriptExecutionScope(Isolate* isolate);
     ~AllowJavascriptExecutionScope();
@@ -8431,7 +8473,7 @@ class V8_EXPORT Isolate {
    * Do not run microtasks while this scope is active, even if microtasks are
    * automatically executed otherwise.
    */
-  class V8_EXPORT SuppressMicrotaskExecutionScope {
+  class V8_EXPORT V8_NODISCARD SuppressMicrotaskExecutionScope {
    public:
     explicit SuppressMicrotaskExecutionScope(
         Isolate* isolate, MicrotaskQueue* microtask_queue = nullptr);
@@ -8455,7 +8497,7 @@ class V8_EXPORT Isolate {
    * This scope allows terminations inside direct V8 API calls and forbid them
    * inside any recursive API calls without explicit SafeForTerminationScope.
    */
-  class V8_EXPORT SafeForTerminationScope {
+  class V8_EXPORT V8_NODISCARD SafeForTerminationScope {
    public:
     explicit SafeForTerminationScope(v8::Isolate* isolate);
     ~SafeForTerminationScope();
@@ -8843,7 +8885,7 @@ class V8_EXPORT Isolate {
       std::unique_ptr<MeasureMemoryDelegate> delegate,
       MeasureMemoryExecution execution = MeasureMemoryExecution::kDefault);
 
-  V8_DEPRECATE_SOON("Use the version with a delegate")
+  V8_DEPRECATED("Use the version with a delegate")
   MaybeLocal<Promise> MeasureMemory(Local<Context> context,
                                     MeasureMemoryMode mode);
 
@@ -8906,10 +8948,6 @@ class V8_EXPORT Isolate {
    */
   Local<Context> GetCurrentContext();
 
-  /** Returns the last context entered through V8's C++ API. */
-  V8_DEPRECATED("Use GetEnteredOrMicrotaskContext().")
-  Local<Context> GetEnteredContext();
-
   /**
    * Returns either the last context entered through V8's C++ API, or the
    * context of the currently running microtask while processing microtasks.
@@ -8967,6 +9005,12 @@ class V8_EXPORT Isolate {
    * Gets the currently active heap tracer for the isolate.
    */
   EmbedderHeapTracer* GetEmbedderHeapTracer();
+
+  /**
+   * \returns the C++ heap managed by V8. Only available if the Isolate was
+   *   created with proper CreatePrams::cpp_heap_params option.
+   */
+  CppHeap* GetCppHeap() const;
 
   /**
    * Use for |AtomicsWaitCallback| to indicate the type of event it receives.
@@ -9189,12 +9233,6 @@ class V8_EXPORT Isolate {
   void SetPromiseRejectCallback(PromiseRejectCallback callback);
 
   /**
-   * An alias for PerformMicrotaskCheckpoint.
-   */
-  V8_DEPRECATED("Use PerformMicrotaskCheckpoint.")
-  void RunMicrotasks() { PerformMicrotaskCheckpoint(); }
-
-  /**
    * Runs the default MicrotaskQueue until it gets empty and perform other
    * microtask checkpoint steps, such as calling ClearKeptObjects. Asserts that
    * the MicrotasksPolicy is not kScoped. Any exceptions thrown by microtask
@@ -9235,16 +9273,12 @@ class V8_EXPORT Isolate {
    * Executing scripts inside the callback will not re-trigger microtasks and
    * the callback.
    */
-  V8_DEPRECATED("Use *WithData version.")
-  void AddMicrotasksCompletedCallback(MicrotasksCompletedCallback callback);
   void AddMicrotasksCompletedCallback(
       MicrotasksCompletedCallbackWithData callback, void* data = nullptr);
 
   /**
    * Removes callback that was installed by AddMicrotasksCompletedCallback.
    */
-  V8_DEPRECATED("Use *WithData version.")
-  void RemoveMicrotasksCompletedCallback(MicrotasksCompletedCallback callback);
   void RemoveMicrotasksCompletedCallback(
       MicrotasksCompletedCallbackWithData callback, void* data = nullptr);
 
@@ -9487,11 +9521,6 @@ class V8_EXPORT Isolate {
    * strings should be allowed.
    */
   V8_DEPRECATED(
-      "Use Isolate::SetModifyCodeGenerationFromStringsCallback instead. "
-      "See http://crbug.com/v8/10096.")
-  void SetAllowCodeGenerationFromStringsCallback(
-      AllowCodeGenerationFromStringsCallback callback);
-  V8_DEPRECATE_SOON(
       "Use Isolate::SetModifyCodeGenerationFromStringsCallback with "
       "ModifyCodeGenerationFromStringsCallback2 instead. See "
       "http://crbug.com/1096017 and TC39 Dynamic Code Brand Checks proposal "
@@ -9856,7 +9885,7 @@ class V8_EXPORT V8 {
    * \param context The third argument passed to the Linux signal handler, which
    * points to a ucontext_t structure.
    */
-  V8_DEPRECATE_SOON("Use TryHandleWebAssemblyTrapPosix")
+  V8_DEPRECATED("Use TryHandleWebAssemblyTrapPosix")
   static bool TryHandleSignal(int signal_number, void* info, void* context);
 #endif  // V8_OS_POSIX
 
@@ -10604,7 +10633,7 @@ class V8_EXPORT Context {
    * Stack-allocated class which sets the execution context for all
    * operations executed within a local scope.
    */
-  class Scope {
+  class V8_NODISCARD Scope {
    public:
     explicit V8_INLINE Scope(Local<Context> context) : context_(context) {
       context_->Enter();
@@ -10620,7 +10649,7 @@ class V8_EXPORT Context {
    * stack.
    * https://html.spec.whatwg.org/multipage/webappapis.html#backup-incumbent-settings-object-stack
    */
-  class V8_EXPORT BackupIncumbentScope final {
+  class V8_EXPORT V8_NODISCARD BackupIncumbentScope final {
    public:
     /**
      * |backup_incumbent_context| is pushed onto the backup incumbent settings
@@ -11412,23 +11441,33 @@ int FunctionCallbackInfo<T>::Length() const {
   return length_;
 }
 
-ScriptOrigin::ScriptOrigin(Local<Value> resource_name,
-                           Local<Integer> resource_line_offset,
-                           Local<Integer> resource_column_offset,
-                           Local<Boolean> resource_is_shared_cross_origin,
-                           Local<Integer> script_id,
-                           Local<Value> source_map_url,
-                           Local<Boolean> resource_is_opaque,
-                           Local<Boolean> is_wasm, Local<Boolean> is_module,
+ScriptOrigin::ScriptOrigin(
+    Local<Value> resource_name, Local<Integer> line_offset,
+    Local<Integer> column_offset, Local<Boolean> is_shared_cross_origin,
+    Local<Integer> script_id, Local<Value> source_map_url,
+    Local<Boolean> is_opaque, Local<Boolean> is_wasm, Local<Boolean> is_module,
+    Local<PrimitiveArray> host_defined_options)
+    : ScriptOrigin(
+          resource_name,
+          line_offset.IsEmpty() ? 0 : static_cast<int>(line_offset->Value()),
+          column_offset.IsEmpty() ? 0
+                                  : static_cast<int>(column_offset->Value()),
+          !is_shared_cross_origin.IsEmpty() && is_shared_cross_origin->IsTrue(),
+          static_cast<int>(script_id.IsEmpty() ? -1 : script_id->Value()),
+          source_map_url, !is_opaque.IsEmpty() && is_opaque->IsTrue(),
+          !is_wasm.IsEmpty() && is_wasm->IsTrue(),
+          !is_module.IsEmpty() && is_module->IsTrue(), host_defined_options) {}
+
+ScriptOrigin::ScriptOrigin(Local<Value> resource_name, int line_offset,
+                           int column_offset, bool is_shared_cross_origin,
+                           int script_id, Local<Value> source_map_url,
+                           bool is_opaque, bool is_wasm, bool is_module,
                            Local<PrimitiveArray> host_defined_options)
-    : resource_name_(resource_name),
-      resource_line_offset_(resource_line_offset),
-      resource_column_offset_(resource_column_offset),
-      options_(!resource_is_shared_cross_origin.IsEmpty() &&
-                   resource_is_shared_cross_origin->IsTrue(),
-               !resource_is_opaque.IsEmpty() && resource_is_opaque->IsTrue(),
-               !is_wasm.IsEmpty() && is_wasm->IsTrue(),
-               !is_module.IsEmpty() && is_module->IsTrue()),
+    : isolate_(Isolate::GetCurrent()),
+      resource_name_(resource_name),
+      resource_line_offset_(line_offset),
+      resource_column_offset_(column_offset),
+      options_(is_shared_cross_origin, is_opaque, is_wasm, is_module),
       script_id_(script_id),
       source_map_url_(source_map_url),
       host_defined_options_(host_defined_options) {}
@@ -11440,17 +11479,22 @@ Local<PrimitiveArray> ScriptOrigin::HostDefinedOptions() const {
 }
 
 Local<Integer> ScriptOrigin::ResourceLineOffset() const {
-  return resource_line_offset_;
+  return v8::Integer::New(isolate_, resource_line_offset_);
 }
-
 
 Local<Integer> ScriptOrigin::ResourceColumnOffset() const {
-  return resource_column_offset_;
+  return v8::Integer::New(isolate_, resource_column_offset_);
 }
 
+Local<Integer> ScriptOrigin::ScriptID() const {
+  return v8::Integer::New(isolate_, script_id_);
+}
 
-Local<Integer> ScriptOrigin::ScriptID() const { return script_id_; }
+int ScriptOrigin::LineOffset() const { return resource_line_offset_; }
 
+int ScriptOrigin::ColumnOffset() const { return resource_column_offset_; }
+
+int ScriptOrigin::ScriptId() const { return script_id_; }
 
 Local<Value> ScriptOrigin::SourceMapUrl() const { return source_map_url_; }
 
@@ -11458,8 +11502,8 @@ ScriptCompiler::Source::Source(Local<String> string, const ScriptOrigin& origin,
                                CachedData* data)
     : source_string(string),
       resource_name(origin.ResourceName()),
-      resource_line_offset(origin.ResourceLineOffset()),
-      resource_column_offset(origin.ResourceColumnOffset()),
+      resource_line_offset(origin.LineOffset()),
+      resource_column_offset(origin.ColumnOffset()),
       resource_options(origin.Options()),
       source_map_url(origin.SourceMapUrl()),
       host_defined_options(origin.HostDefinedOptions()),
@@ -11749,6 +11793,13 @@ Private* Private::Cast(Data* data) {
   CheckCast(data);
 #endif
   return reinterpret_cast<Private*>(data);
+}
+
+ModuleRequest* ModuleRequest::Cast(Data* data) {
+#ifdef V8_ENABLE_CHECKS
+  CheckCast(data);
+#endif
+  return reinterpret_cast<ModuleRequest*>(data);
 }
 
 Module* Module::Cast(Data* data) {

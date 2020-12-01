@@ -2607,7 +2607,12 @@ Node* EffectControlLinearizer::BuildCheckedFloat64ToInt32(
 Node* EffectControlLinearizer::BuildCheckedFloat64ToIndex(
     const FeedbackSource& feedback, Node* value, Node* frame_state) {
   if (machine()->Is64()) {
-    Node* value64 = __ TruncateFloat64ToInt64(value);
+    Node* value64 =
+        __ TruncateFloat64ToInt64(value, TruncateKind::kArchitectureDefault);
+    // The TruncateKind above means there will be a precision loss in case
+    // INT64_MAX input is passed, but that precision loss would not be
+    // detected and would not lead to a deoptimization from the first check.
+    // But in this case, we'll deopt anyway because of the following checks.
     Node* check_same = __ Float64Equal(value, __ ChangeInt64ToFloat64(value64));
     __ DeoptimizeIfNot(DeoptimizeReason::kLostPrecisionOrNaN, feedback,
                        check_same, frame_state);
@@ -2641,7 +2646,8 @@ Node* EffectControlLinearizer::LowerCheckedFloat64ToInt32(Node* node,
 Node* EffectControlLinearizer::BuildCheckedFloat64ToInt64(
     CheckForMinusZeroMode mode, const FeedbackSource& feedback, Node* value,
     Node* frame_state) {
-  Node* value64 = __ TruncateFloat64ToInt64(value);
+  Node* value64 =
+      __ TruncateFloat64ToInt64(value, TruncateKind::kSetOverflowToMin);
   Node* check_same = __ Float64Equal(value, __ ChangeInt64ToFloat64(value64));
   __ DeoptimizeIfNot(DeoptimizeReason::kLostPrecisionOrNaN, feedback,
                      check_same, frame_state);
@@ -5085,9 +5091,16 @@ Node* EffectControlLinearizer::LowerFastApiCall(Node* node) {
 
   call_descriptor->SetCFunctionInfo(c_signature);
 
+  // CPU profiler support
+  Node* target_address = __ ExternalConstant(
+      ExternalReference::fast_api_call_target_address(isolate()));
+  __ Store(StoreRepresentation(MachineType::PointerRepresentation(),
+                               kNoWriteBarrier),
+           target_address, 0, n.target());
+
   Node** const inputs = graph()->zone()->NewArray<Node*>(
       c_arg_count + FastApiCallNode::kFastCallExtraInputCount);
-  inputs[0] = NodeProperties::GetValueInput(node, 0);  // the target
+  inputs[0] = n.target();
   for (int i = FastApiCallNode::kFastTargetInputCount;
        i < c_arg_count + FastApiCallNode::kFastTargetInputCount; ++i) {
     if (c_signature->ArgumentInfo(i - 1).GetType() ==
@@ -5099,11 +5112,16 @@ Node* EffectControlLinearizer::LowerFastApiCall(Node* node) {
     }
   }
   inputs[c_arg_count + 1] = fast_api_call_stack_slot_;
+
   inputs[c_arg_count + 2] = __ effect();
   inputs[c_arg_count + 3] = __ control();
 
   __ Call(call_descriptor,
           c_arg_count + FastApiCallNode::kFastCallExtraInputCount, inputs);
+
+  __ Store(StoreRepresentation(MachineType::PointerRepresentation(),
+                               kNoWriteBarrier),
+           target_address, 0, __ IntPtrConstant(0));
 
   // Generate the load from `fast_api_call_stack_slot_`.
   Node* load = __ Load(MachineType::Int32(), fast_api_call_stack_slot_, 0);

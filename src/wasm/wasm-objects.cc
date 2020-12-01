@@ -285,7 +285,7 @@ Handle<WasmTableObject> WasmTableObject::New(
       isolate->native_context()->wasm_table_constructor(), isolate);
   auto table_obj = Handle<WasmTableObject>::cast(
       isolate->factory()->NewJSObject(table_ctor));
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
 
   if (!instance.is_null()) table_obj->set_instance(*instance);
   table_obj->set_entries(*backing_store);
@@ -446,6 +446,7 @@ void WasmTableObject::Set(Isolate* isolate, Handle<WasmTableObject> table,
   switch (table->type().heap_representation()) {
     case wasm::HeapType::kExtern:
     case wasm::HeapType::kExn:
+    case wasm::HeapType::kAny:
       entries->set(entry_index, *entry);
       return;
     case wasm::HeapType::kFunc:
@@ -500,6 +501,7 @@ Handle<Object> WasmTableObject::Get(Isolate* isolate,
       break;
     case wasm::HeapType::kEq:
     case wasm::HeapType::kI31:
+    case wasm::HeapType::kAny:
       // TODO(7748): Implement once we have a story for struct/arrays/i31ref in
       // JS.
       UNIMPLEMENTED();
@@ -1000,7 +1002,7 @@ MaybeHandle<WasmGlobalObject> WasmGlobalObject::New(
       isolate->factory()->NewJSObject(global_ctor));
   {
     // Disallow GC until all fields have acceptable types.
-    DisallowHeapAllocation no_gc;
+    DisallowGarbageCollection no_gc;
     if (!instance.is_null()) global_obj->set_instance(*instance);
     global_obj->set_type(type);
     global_obj->set_offset(offset);
@@ -1891,7 +1893,7 @@ Handle<WasmExportedFunction> WasmExportedFunction::New(
   function_data->set_jump_table_offset(jump_table_offset);
   function_data->set_function_index(func_index);
   function_data->set_signature(*sig_foreign);
-  function_data->set_call_count(0);
+  function_data->set_wrapper_budget(wasm::kGenericWrapperBudget);
   function_data->set_c_wrapper_code(Smi::zero(), SKIP_WRITE_BARRIER);
   function_data->set_wasm_call_target(Smi::zero(), SKIP_WRITE_BARRIER);
   function_data->set_packed_args_size(0);
@@ -1977,6 +1979,18 @@ bool WasmExportedFunction::MatchesSignature(
     }
   }
   return true;
+}
+
+// static
+std::unique_ptr<char[]> WasmExportedFunction::GetDebugName(
+    const wasm::FunctionSig* sig) {
+  constexpr const char kPrefix[] = "js-to-wasm:";
+  // prefix + parameters + delimiter + returns + zero byte
+  size_t len = strlen(kPrefix) + sig->all().size() + 2;
+  auto buffer = OwnedVector<char>::New(len);
+  memcpy(buffer.start(), kPrefix, strlen(kPrefix));
+  PrintSignature(buffer.as_vector() + strlen(kPrefix), sig);
+  return buffer.ReleaseData();
 }
 
 // static
@@ -2127,6 +2141,10 @@ Handle<AsmWasmData> AsmWasmData::New(
   return result;
 }
 
+static_assert(wasm::kV8MaxWasmArrayLength <=
+                  (Smi::kMaxValue - WasmArray::kHeaderSize) / kDoubleSize,
+              "max Wasm array size must fit into max object size");
+
 namespace wasm {
 
 bool TypecheckJSObject(Isolate* isolate, const WasmModule* module,
@@ -2151,6 +2169,7 @@ bool TypecheckJSObject(Isolate* isolate, const WasmModule* module,
         }
         case HeapType::kExtern:
         case HeapType::kExn:
+        case HeapType::kAny:
           return true;
         case HeapType::kEq: {
           // TODO(7748): Change this when we have a decision on the JS API for

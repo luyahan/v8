@@ -48,7 +48,12 @@ class Isolate;
 
 class AstRawString final : public ZoneObject {
  public:
-  static bool Compare(const AstRawString* a, const AstRawString* b);
+  static bool Equal(const AstRawString* lhs, const AstRawString* rhs);
+
+  // Returns 0 if lhs is equal to rhs.
+  // Returns <0 if lhs is less than rhs in code point order.
+  // Returns >0 if lhs is greater than than rhs in code point order.
+  static int Compare(const AstRawString* lhs, const AstRawString* rhs);
 
   bool IsEmpty() const { return literal_bytes_.length() == 0; }
   int length() const {
@@ -72,7 +77,11 @@ class AstRawString final : public ZoneObject {
 
   // For storing AstRawStrings in a hash map.
   uint32_t raw_hash_field() const { return raw_hash_field_; }
-  uint32_t Hash() const { return raw_hash_field_ >> Name::kHashShift; }
+  uint32_t Hash() const {
+    // Hash field must be computed.
+    DCHECK_EQ(raw_hash_field_ & Name::kHashNotComputedMask, 0);
+    return raw_hash_field_ >> Name::kHashShift;
+  }
 
   // This function can be called after internalizing.
   V8_INLINE Handle<String> string() const {
@@ -210,7 +219,7 @@ struct AstRawStringMapMatcher {
   bool operator()(uint32_t hash1, uint32_t hash2,
                   const AstRawString* lookup_key,
                   const AstRawString* entry_key) const {
-    return hash1 == hash2 && AstRawString::Compare(lookup_key, entry_key);
+    return hash1 == hash2 && AstRawString::Equal(lookup_key, entry_key);
   }
 };
 

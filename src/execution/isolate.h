@@ -650,7 +650,12 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   Context* context_address() { return &thread_local_top()->context_; }
 
   // Access to current thread id.
-  THREAD_LOCAL_TOP_ACCESSOR(ThreadId, thread_id)
+  inline void set_thread_id(ThreadId id) {
+    thread_local_top()->thread_id_.store(id, std::memory_order_relaxed);
+  }
+  inline ThreadId thread_id() const {
+    return thread_local_top()->thread_id_.load(std::memory_order_relaxed);
+  }
 
   // Interface to pending exception.
   inline Object pending_exception();
@@ -774,7 +779,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // Heuristically guess whether a Promise is handled by user catch handler
   bool PromiseHasUserDefinedRejectHandler(Handle<JSPromise> promise);
 
-  class ExceptionScope {
+  class V8_NODISCARD ExceptionScope {
    public:
     // Scope currently can only be used for regular exceptions,
     // not termination exception.
@@ -987,6 +992,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   }
   StackGuard* stack_guard() { return isolate_data()->stack_guard(); }
   Heap* heap() { return &heap_; }
+  const Heap* heap() const { return &heap_; }
   ReadOnlyHeap* read_only_heap() const { return read_only_heap_; }
   static Isolate* FromHeap(Heap* heap) {
     return reinterpret_cast<Isolate*>(reinterpret_cast<Address>(heap) -
@@ -1258,8 +1264,10 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
       kDefaultCollator, kDefaultNumberFormat, kDefaultSimpleDateFormat,
       kDefaultSimpleDateFormatForTime, kDefaultSimpleDateFormatForDate};
 
-  icu::UMemory* get_cached_icu_object(ICUObjectCacheType cache_type);
+  icu::UMemory* get_cached_icu_object(ICUObjectCacheType cache_type,
+                                      Handle<Object> locales);
   void set_icu_object_in_cache(ICUObjectCacheType cache_type,
+                               Handle<Object> locale,
                                std::shared_ptr<icu::UMemory> obj);
   void clear_cached_icu_object(ICUObjectCacheType cache_type);
   void ClearCachedIcuObjects();
@@ -1617,6 +1625,12 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   MaybeLocal<v8::Context> GetContextFromRecorderContextId(
       v8::metrics::Recorder::ContextId id);
 
+  LocalIsolate* main_thread_local_isolate() {
+    return main_thread_local_isolate_.get();
+  }
+
+  LocalHeap* main_thread_local_heap();
+
 #ifdef V8_HEAP_SANDBOX
   ExternalPointerTable& external_pointer_table() {
     return isolate_data_.external_pointer_table_;
@@ -1813,10 +1827,9 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
       return static_cast<std::size_t>(a);
     }
   };
-  std::unordered_map<ICUObjectCacheType, std::shared_ptr<icu::UMemory>,
-                     ICUObjectCacheTypeHash>
+  typedef std::pair<std::string, std::shared_ptr<icu::UMemory>> ICUCachePair;
+  std::unordered_map<ICUObjectCacheType, ICUCachePair, ICUObjectCacheTypeHash>
       icu_object_cache_;
-
 #endif  // V8_INTL_SUPPORT
 
   // true if being profiled. Causes collection of extra compile info.
@@ -1954,6 +1967,8 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   bool promise_hook_or_debug_is_active_or_async_event_delegate_ = false;
   int async_task_count_ = 0;
 
+  std::unique_ptr<LocalIsolate> main_thread_local_isolate_;
+
   v8::Isolate::AbortOnUncaughtExceptionCallback
       abort_on_uncaught_exception_callback_ = nullptr;
 
@@ -2048,7 +2063,7 @@ class V8_EXPORT_PRIVATE SaveAndSwitchContext : public SaveContext {
 
 // A scope which sets the given isolate's context to null for its lifetime to
 // ensure that code does not make assumptions on a context being available.
-class NullContextScope : public SaveAndSwitchContext {
+class V8_NODISCARD NullContextScope : public SaveAndSwitchContext {
  public:
   explicit NullContextScope(Isolate* isolate)
       : SaveAndSwitchContext(isolate, Context()) {}

@@ -8,12 +8,15 @@
 
 #include <stdarg.h>
 #include <stdlib.h>
+
 #include <cmath>
 
 #include "src/base/bits.h"
 #include "src/base/lazy-instance.h"
 #include "src/base/memory.h"
 #include "src/base/overflowing-math.h"
+#include "src/base/platform/platform.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/arm/constants-arm.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/codegen/macro-assembler.h"
@@ -631,7 +634,7 @@ void Simulator::CheckICache(base::CustomMatcherHashMap* i_cache,
                        cache_page->CachedData(offset), kInstrSize));
   } else {
     // Cache miss.  Load memory into the cache.
-    memcpy(cached_line, line, CachePage::kLineLength);
+    base::Memcpy(cached_line, line, CachePage::kLineLength);
     *cache_valid_byte = CachePage::LINE_VALID;
   }
 }
@@ -640,7 +643,7 @@ Simulator::Simulator(Isolate* isolate) : isolate_(isolate) {
   // Set up simulator support first. Some of this information is needed to
   // setup the architecture state.
   size_t stack_size = 1 * 1024 * 1024;  // allocate 1MB for stack
-  stack_ = reinterpret_cast<char*>(malloc(stack_size));
+  stack_ = reinterpret_cast<char*>(base::Malloc(stack_size));
   pc_modified_ = false;
   icount_ = 0;
   break_pc_ = nullptr;
@@ -690,7 +693,7 @@ Simulator::Simulator(Isolate* isolate) : isolate_(isolate) {
 
 Simulator::~Simulator() {
   GlobalMonitor::Get()->RemoveProcessor(&global_monitor_processor_);
-  free(stack_);
+  base::Free(stack_);
 }
 
 // Get the active Simulator for the current thread.
@@ -736,14 +739,14 @@ double Simulator::get_double_from_register_pair(int reg) {
   // Read the bits from the unsigned integer register_[] array
   // into the double precision floating point value and return it.
   char buffer[2 * sizeof(vfp_registers_[0])];
-  memcpy(buffer, &registers_[reg], 2 * sizeof(registers_[0]));
-  memcpy(&dm_val, buffer, 2 * sizeof(registers_[0]));
+  base::Memcpy(buffer, &registers_[reg], 2 * sizeof(registers_[0]));
+  base::Memcpy(&dm_val, buffer, 2 * sizeof(registers_[0]));
   return (dm_val);
 }
 
 void Simulator::set_register_pair_from_double(int reg, double* value) {
   DCHECK((reg >= 0) && (reg < num_registers) && ((reg % 2) == 0));
-  memcpy(registers_ + reg, value, sizeof(*value));
+  base::Memcpy(registers_ + reg, value, sizeof(*value));
 }
 
 void Simulator::set_dw_register(int dreg, const int* dbl) {
@@ -754,22 +757,22 @@ void Simulator::set_dw_register(int dreg, const int* dbl) {
 
 void Simulator::get_d_register(int dreg, uint64_t* value) {
   DCHECK((dreg >= 0) && (dreg < DwVfpRegister::SupportedRegisterCount()));
-  memcpy(value, vfp_registers_ + dreg * 2, sizeof(*value));
+  base::Memcpy(value, vfp_registers_ + dreg * 2, sizeof(*value));
 }
 
 void Simulator::set_d_register(int dreg, const uint64_t* value) {
   DCHECK((dreg >= 0) && (dreg < DwVfpRegister::SupportedRegisterCount()));
-  memcpy(vfp_registers_ + dreg * 2, value, sizeof(*value));
+  base::Memcpy(vfp_registers_ + dreg * 2, value, sizeof(*value));
 }
 
 void Simulator::get_d_register(int dreg, uint32_t* value) {
   DCHECK((dreg >= 0) && (dreg < DwVfpRegister::SupportedRegisterCount()));
-  memcpy(value, vfp_registers_ + dreg * 2, sizeof(*value) * 2);
+  base::Memcpy(value, vfp_registers_ + dreg * 2, sizeof(*value) * 2);
 }
 
 void Simulator::set_d_register(int dreg, const uint32_t* value) {
   DCHECK((dreg >= 0) && (dreg < DwVfpRegister::SupportedRegisterCount()));
-  memcpy(vfp_registers_ + dreg * 2, value, sizeof(*value) * 2);
+  base::Memcpy(vfp_registers_ + dreg * 2, value, sizeof(*value) * 2);
 }
 
 template <typename T, int SIZE>
@@ -777,7 +780,7 @@ void Simulator::get_neon_register(int reg, T (&value)[SIZE / sizeof(T)]) {
   DCHECK(SIZE == kSimd128Size || SIZE == kDoubleSize);
   DCHECK_LE(0, reg);
   DCHECK_GT(SIZE == kSimd128Size ? num_q_registers : num_d_registers, reg);
-  memcpy(value, vfp_registers_ + reg * (SIZE / 4), SIZE);
+  base::Memcpy(value, vfp_registers_ + reg * (SIZE / 4), SIZE);
 }
 
 template <typename T, int SIZE>
@@ -785,7 +788,7 @@ void Simulator::set_neon_register(int reg, const T (&value)[SIZE / sizeof(T)]) {
   DCHECK(SIZE == kSimd128Size || SIZE == kDoubleSize);
   DCHECK_LE(0, reg);
   DCHECK_GT(SIZE == kSimd128Size ? num_q_registers : num_d_registers, reg);
-  memcpy(vfp_registers_ + reg * (SIZE / 4), value, SIZE);
+  base::Memcpy(vfp_registers_ + reg * (SIZE / 4), value, SIZE);
 }
 
 // Raw access to the PC register.
@@ -821,7 +824,7 @@ void Simulator::SetVFPRegister(int reg_index, const InputType& value) {
   if (register_size == 2)
     DCHECK(reg_index < DwVfpRegister::SupportedRegisterCount());
 
-  memcpy(&vfp_registers_[reg_index * register_size], &value, bytes);
+  base::Memcpy(&vfp_registers_[reg_index * register_size], &value, bytes);
 }
 
 template <class ReturnType, int register_size>
@@ -834,7 +837,7 @@ ReturnType Simulator::GetFromVFPRegister(int reg_index) {
     DCHECK(reg_index < DwVfpRegister::SupportedRegisterCount());
 
   ReturnType value;
-  memcpy(&value, &vfp_registers_[register_size * reg_index], bytes);
+  base::Memcpy(&value, &vfp_registers_[register_size * reg_index], bytes);
   return value;
 }
 
@@ -888,14 +891,14 @@ void Simulator::GetFpArgs(double* x, double* y, int32_t* z) {
 void Simulator::SetFpResult(const double& result) {
   if (use_eabi_hardfloat()) {
     char buffer[2 * sizeof(vfp_registers_[0])];
-    memcpy(buffer, &result, sizeof(buffer));
+    base::Memcpy(buffer, &result, sizeof(buffer));
     // Copy result to d0.
-    memcpy(vfp_registers_, buffer, sizeof(buffer));
+    base::Memcpy(vfp_registers_, buffer, sizeof(buffer));
   } else {
     char buffer[2 * sizeof(registers_[0])];
-    memcpy(buffer, &result, sizeof(buffer));
+    base::Memcpy(buffer, &result, sizeof(buffer));
     // Copy result to r0 and r1.
-    memcpy(registers_, buffer, sizeof(buffer));
+    base::Memcpy(registers_, buffer, sizeof(buffer));
   }
 }
 
@@ -1097,7 +1100,7 @@ int Simulator::WriteExDW(int32_t addr, int32_t value1, int32_t value2) {
 uintptr_t Simulator::StackLimit(uintptr_t c_limit) const {
   // The simulator uses a separate JS stack. If we have exhausted the C stack,
   // we also drop down the JS limit to reflect the exhaustion on the JS stack.
-  if (GetCurrentStackPosition() < c_limit) {
+  if (base::Stack::GetCurrentStackPosition() < c_limit) {
     return reinterpret_cast<uintptr_t>(get_sp());
   }
 
@@ -3413,8 +3416,9 @@ void Simulator::DecodeTypeVFP(Instruction* instr) {
       get_d_register(vn, &data);
       if ((opc1_opc2 & 0xB) == 0) {
         // NeonS32 / NeonU32
+        DCHECK_EQ(0, instr->Bit(23));
         int32_t int_data[2];
-        memcpy(int_data, &data, sizeof(int_data));
+        base::Memcpy(int_data, &data, sizeof(int_data));
         set_register(rt, int_data[instr->Bit(21)]);
       } else {
         uint64_t data;
@@ -3880,28 +3884,28 @@ void Simulator::DecodeType6CoprocessorIns(Instruction* instr) {
 
 // Helper functions for implementing NEON ops. Unop applies a unary op to each
 // lane. Binop applies a binary operation to matching input lanes.
-template <typename T>
+template <typename T, int SIZE = kSimd128Size>
 void Unop(Simulator* simulator, int Vd, int Vm, std::function<T(T)> unop) {
-  static const int kLanes = 16 / sizeof(T);
+  static const int kLanes = SIZE / sizeof(T);
   T src[kLanes];
-  simulator->get_neon_register(Vm, src);
+  simulator->get_neon_register<T, SIZE>(Vm, src);
   for (int i = 0; i < kLanes; i++) {
     src[i] = unop(src[i]);
   }
-  simulator->set_neon_register(Vd, src);
+  simulator->set_neon_register<T, SIZE>(Vd, src);
 }
 
-template <typename T>
+template <typename T, int SIZE = kSimd128Size>
 void Binop(Simulator* simulator, int Vd, int Vm, int Vn,
            std::function<T(T, T)> binop) {
-  static const int kLanes = 16 / sizeof(T);
+  static const int kLanes = SIZE / sizeof(T);
   T src1[kLanes], src2[kLanes];
-  simulator->get_neon_register(Vn, src1);
-  simulator->get_neon_register(Vm, src2);
+  simulator->get_neon_register<T, SIZE>(Vn, src1);
+  simulator->get_neon_register<T, SIZE>(Vm, src2);
   for (int i = 0; i < kLanes; i++) {
     src1[i] = binop(src1[i], src2[i]);
   }
-  simulator->set_neon_register(Vd, src1);
+  simulator->set_neon_register<T, SIZE>(Vd, src1);
 }
 
 // Templated operations for NEON instructions.
@@ -4080,7 +4084,7 @@ void VmovImmediate(Simulator* simulator, Instruction* instr) {
       // Set all bytes of register.
       std::fill_n(imms, kSimd128Size, imm);
       uint64_t imm64;
-      memcpy(&imm64, imms, 8);
+      base::Memcpy(&imm64, imms, 8);
       for (int r = 0; r < regs; r++) {
         simulator->set_d_register(vd + r, &imm64);
       }
@@ -4111,15 +4115,41 @@ void ShiftLeft(Simulator* simulator, int Vd, int Vm, int shift) {
 }
 
 template <typename T, int SIZE>
-void ShiftRight(Simulator* simulator, int Vd, int Vm, int shift) {
-  Unop<T>(simulator, Vd, Vm, [shift](T x) { return x >> shift; });
+void LogicalShiftRight(Simulator* simulator, int Vd, int Vm, int shift) {
+  Unop<T, SIZE>(simulator, Vd, Vm, [shift](T x) { return x >> shift; });
 }
 
 template <typename T, int SIZE>
 void ArithmeticShiftRight(Simulator* simulator, int Vd, int Vm, int shift) {
   auto shift_fn =
       std::bind(ArithmeticShiftRight<T>, std::placeholders::_1, shift);
-  Unop<T>(simulator, Vd, Vm, shift_fn);
+  Unop<T, SIZE>(simulator, Vd, Vm, shift_fn);
+}
+
+template <typename T, int SIZE>
+void ShiftRight(Simulator* simulator, int Vd, int Vm, int shift,
+                bool is_unsigned) {
+  if (is_unsigned) {
+    using unsigned_T = typename std::make_unsigned<T>::type;
+    LogicalShiftRight<unsigned_T, SIZE>(simulator, Vd, Vm, shift);
+  } else {
+    ArithmeticShiftRight<T, SIZE>(simulator, Vd, Vm, shift);
+  }
+}
+
+template <typename T, int SIZE>
+void ShiftRightAccumulate(Simulator* simulator, int Vd, int Vm, int shift) {
+  Binop<T, SIZE>(simulator, Vd, Vm, Vd,
+                 [shift](T a, T x) { return a + (x >> shift); });
+}
+
+template <typename T, int SIZE>
+void ArithmeticShiftRightAccumulate(Simulator* simulator, int Vd, int Vm,
+                                    int shift) {
+  Binop<T, SIZE>(simulator, Vd, Vm, Vd, [shift](T a, T x) {
+    T result = ArithmeticShiftRight<T>(x, shift);
+    return a + result;
+  });
 }
 
 template <typename T, int SIZE>
@@ -4263,9 +4293,9 @@ void MultiplyLong(Simulator* simulator, int Vd, int Vn, int Vm) {
   // underlying datatype easily.
   uint64_t tmp;
   simulator->get_d_register(Vn, &tmp);
-  memcpy(src1, &tmp, sizeof(tmp));
+  base::Memcpy(src1, &tmp, sizeof(tmp));
   simulator->get_d_register(Vm, &tmp);
-  memcpy(src2, &tmp, sizeof(tmp));
+  base::Memcpy(src2, &tmp, sizeof(tmp));
 
   for (int i = 0; i < kElems; i++) {
     dst[i] = WideType{src1[i]} * WideType{src2[i]};
@@ -4649,8 +4679,8 @@ void Simulator::DecodeAdvancedSIMDTwoOrThreeRegisters(Instruction* instr) {
           }
           break;
         }
-        default:
-          UNIMPLEMENTED();
+        case Neon64:
+          UNREACHABLE();
           break;
       }
     } else if (opc1 == 0b10 && instr->Bit(10) == 1) {
@@ -5381,45 +5411,73 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
       int l = instr->Bit(7);
       int q = instr->Bit(6);
       int imm3H_L = imm3H << 1 | l;
+      int imm7 = instr->Bits(21, 16);
+      imm7 += (l << 6);
+      int size = base::bits::RoundDownToPowerOfTwo32(imm7);
+      NeonSize ns =
+          static_cast<NeonSize>(base::bits::WhichPowerOfTwo(size >> 3));
 
       if (imm3H_L != 0 && opc == 0) {
-        // vshr.s<size> Qd, Qm, shift
-        int imm7 = instr->Bits(21, 16);
-        if (instr->Bit(7) != 0) imm7 += 64;
-        int size = base::bits::RoundDownToPowerOfTwo32(imm7);
+        // vshr.s/u<size> Qd, Qm, shift
         int shift = 2 * size - imm7;
-        int Vd = instr->VFPDRegValue(kSimd128Precision);
-        int Vm = instr->VFPMRegValue(kSimd128Precision);
-        NeonSize ns =
-            static_cast<NeonSize>(base::bits::WhichPowerOfTwo(size >> 3));
+        int Vd = instr->VFPDRegValue(q ? kSimd128Precision : kDoublePrecision);
+        int Vm = instr->VFPMRegValue(q ? kSimd128Precision : kDoublePrecision);
+        switch (ns) {
+          case Neon8:
+            q ? ShiftRight<int8_t, kSimd128Size>(this, Vd, Vm, shift, u)
+              : ShiftRight<int8_t, kDoubleSize>(this, Vd, Vm, shift, u);
+            break;
+          case Neon16:
+            q ? ShiftRight<int16_t, kSimd128Size>(this, Vd, Vm, shift, u)
+              : ShiftRight<int16_t, kDoubleSize>(this, Vd, Vm, shift, u);
+            break;
+          case Neon32:
+            q ? ShiftRight<int32_t, kSimd128Size>(this, Vd, Vm, shift, u)
+              : ShiftRight<int32_t, kDoubleSize>(this, Vd, Vm, shift, u);
+            break;
+          case Neon64:
+            q ? ShiftRight<int64_t, kSimd128Size>(this, Vd, Vm, shift, u)
+              : ShiftRight<int64_t, kDoubleSize>(this, Vd, Vm, shift, u);
+            break;
+        }
+      } else if (imm3H_L != 0 && opc == 1) {
+        // vsra Dd, Dm, #imm
+        DCHECK(!q);  // Unimplemented for now.
+        int shift = 2 * size - imm7;
+        int Vd = instr->VFPDRegValue(kDoublePrecision);
+        int Vm = instr->VFPMRegValue(kDoublePrecision);
         if (u) {
           switch (ns) {
             case Neon8:
-              ShiftRight<uint8_t, kSimd128Size>(this, Vd, Vm, shift);
+              ShiftRightAccumulate<uint8_t, kDoubleSize>(this, Vd, Vm, shift);
               break;
             case Neon16:
-              ShiftRight<uint16_t, kSimd128Size>(this, Vd, Vm, shift);
+              ShiftRightAccumulate<uint16_t, kDoubleSize>(this, Vd, Vm, shift);
               break;
             case Neon32:
-              ShiftRight<uint32_t, kSimd128Size>(this, Vd, Vm, shift);
+              ShiftRightAccumulate<uint32_t, kDoubleSize>(this, Vd, Vm, shift);
               break;
             case Neon64:
-              ShiftRight<uint64_t, kSimd128Size>(this, Vd, Vm, shift);
+              ShiftRightAccumulate<uint64_t, kDoubleSize>(this, Vd, Vm, shift);
               break;
           }
         } else {
           switch (ns) {
             case Neon8:
-              ArithmeticShiftRight<int8_t, kSimd128Size>(this, Vd, Vm, shift);
+              ArithmeticShiftRightAccumulate<int8_t, kDoubleSize>(this, Vd, Vm,
+                                                                  shift);
               break;
             case Neon16:
-              ArithmeticShiftRight<int16_t, kSimd128Size>(this, Vd, Vm, shift);
+              ArithmeticShiftRightAccumulate<int16_t, kDoubleSize>(this, Vd, Vm,
+                                                                   shift);
               break;
             case Neon32:
-              ArithmeticShiftRight<int32_t, kSimd128Size>(this, Vd, Vm, shift);
+              ArithmeticShiftRightAccumulate<int32_t, kDoubleSize>(this, Vd, Vm,
+                                                                   shift);
               break;
             case Neon64:
-              ArithmeticShiftRight<int64_t, kSimd128Size>(this, Vd, Vm, shift);
+              ArithmeticShiftRightAccumulate<int64_t, kDoubleSize>(this, Vd, Vm,
+                                                                   shift);
               break;
           }
         }
@@ -5429,8 +5487,7 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
           if ((instr->VdValue() & 1) != 0) UNIMPLEMENTED();
           int Vd = instr->VFPDRegValue(kSimd128Precision);
           int Vm = instr->VFPMRegValue(kDoublePrecision);
-          int imm3 = instr->Bits(21, 19);
-          switch (imm3) {
+          switch (imm3H) {
             case 1:
               Widen<uint8_t, uint16_t>(this, Vd, Vm);
               break;
@@ -5449,8 +5506,7 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
           if ((instr->VdValue() & 1) != 0) UNIMPLEMENTED();
           int Vd = instr->VFPDRegValue(kSimd128Precision);
           int Vm = instr->VFPMRegValue(kDoublePrecision);
-          int imm3 = instr->Bits(21, 19);
-          switch (imm3) {
+          switch (imm3H) {
             case 1:
               Widen<int8_t, int16_t>(this, Vd, Vm);
               break;
@@ -5467,9 +5523,6 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
         }
       } else if (!u && imm3H_L != 0 && opc == 0b0101) {
         // vshl.i<size> Qd, Qm, shift
-        int imm7 = instr->Bits(21, 16);
-        if (instr->Bit(7) != 0) imm7 += 64;
-        int size = base::bits::RoundDownToPowerOfTwo32(imm7);
         int shift = imm7 - size;
         int Vd = instr->VFPDRegValue(kSimd128Precision);
         int Vm = instr->VFPMRegValue(kSimd128Precision);
@@ -5491,9 +5544,6 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
         }
       } else if (u && imm3H_L != 0 && opc == 0b0100) {
         // vsri.<size> Dd, Dm, shift
-        int imm7 = instr->Bits(21, 16);
-        if (instr->Bit(7) != 0) imm7 += 64;
-        int size = base::bits::RoundDownToPowerOfTwo32(imm7);
         int shift = 2 * size - imm7;
         int Vd = instr->VFPDRegValue(kDoublePrecision);
         int Vm = instr->VFPMRegValue(kDoublePrecision);
@@ -5516,9 +5566,6 @@ void Simulator::DecodeAdvancedSIMDDataProcessing(Instruction* instr) {
         }
       } else if (u && imm3H_L != 0 && opc == 0b0101) {
         // vsli.<size> Dd, Dm, shift
-        int imm7 = instr->Bits(21, 16);
-        if (instr->Bit(7) != 0) imm7 += 64;
-        int size = base::bits::RoundDownToPowerOfTwo32(imm7);
         int shift = imm7 - size;
         int Vd = instr->VFPDRegValue(kDoublePrecision);
         int Vm = instr->VFPMRegValue(kDoublePrecision);
@@ -6116,8 +6163,9 @@ intptr_t Simulator::CallImpl(Address entry, int argument_count,
     entry_stack &= -base::OS::ActivationFrameAlignment();
   }
   // Store remaining arguments on stack, from low to high memory.
-  memcpy(reinterpret_cast<intptr_t*>(entry_stack), arguments + reg_arg_count,
-         (argument_count - reg_arg_count) * sizeof(*arguments));
+  base::Memcpy(reinterpret_cast<intptr_t*>(entry_stack),
+               arguments + reg_arg_count,
+               (argument_count - reg_arg_count) * sizeof(*arguments));
   set_register(sp, entry_stack);
 
   CallInternal(entry);

@@ -978,7 +978,7 @@ void TestScanRegExp(const char* re_source, const char* expected) {
       scanner.CurrentSymbol(&ast_value_factory);
   ast_value_factory.Internalize(CcTest::i_isolate());
   i::Handle<i::String> val = current_symbol->string();
-  i::DisallowHeapAllocation no_alloc;
+  i::DisallowGarbageCollection no_alloc;
   i::String::FlatContent content = val->GetFlatContent(no_alloc);
   CHECK(content.IsOneByte());
   i::Vector<const uint8_t> actual = content.ToOneByteVector();
@@ -1619,7 +1619,6 @@ const char* ReadString(unsigned* start) {
 enum ParserFlag {
   kAllowLazy,
   kAllowNatives,
-  kAllowHarmonyPrivateMethods,
   kAllowHarmonyLogicalAssignment,
 };
 
@@ -1631,7 +1630,6 @@ enum ParserSyncTestResult {
 
 void SetGlobalFlags(base::EnumSet<ParserFlag> flags) {
   i::FLAG_allow_natives_syntax = flags.contains(kAllowNatives);
-  i::FLAG_harmony_private_methods = flags.contains(kAllowHarmonyPrivateMethods);
   i::FLAG_harmony_logical_assignment =
       flags.contains(kAllowHarmonyLogicalAssignment);
 }
@@ -1639,8 +1637,6 @@ void SetGlobalFlags(base::EnumSet<ParserFlag> flags) {
 void SetParserFlags(i::UnoptimizedCompileFlags* compile_flags,
                     base::EnumSet<ParserFlag> flags) {
   compile_flags->set_allow_natives_syntax(flags.contains(kAllowNatives));
-  compile_flags->set_allow_harmony_private_methods(
-      flags.contains(kAllowHarmonyPrivateMethods));
   compile_flags->set_allow_harmony_logical_assignment(
       flags.contains(kAllowHarmonyLogicalAssignment));
 }
@@ -5697,11 +5693,7 @@ TEST(PrivateMethodsNoErrors) {
   };
   // clang-format on
 
-  RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 TEST(PrivateMethodsAndFieldsNoErrors) {
@@ -5755,13 +5747,7 @@ TEST(PrivateMethodsAndFieldsNoErrors) {
   };
   // clang-format on
 
-  RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods_and_fields[] = {
-      kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods_and_fields,
-                    arraysize(private_methods_and_fields));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 TEST(PrivateMethodsErrors) {
@@ -5830,10 +5816,6 @@ TEST(PrivateMethodsErrors) {
   // clang-format on
 
   RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kError, nullptr, 0,
-                    private_methods, arraysize(private_methods));
 }
 
 // Test that private members parse in class bodies nested in object literals
@@ -5856,9 +5838,7 @@ TEST(PrivateMembersNestedInObjectLiteralsNoErrors) {
   };
   // clang-format on
 
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 // Test that private members parse in class bodies nested in classes
@@ -5883,9 +5863,7 @@ TEST(PrivateMembersInNestedClassNoErrors) {
   };
   // clang-format on
 
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 // Test that private members do not parse outside class bodies
@@ -5915,10 +5893,6 @@ TEST(PrivateMembersInNonClassErrors) {
   // clang-format on
 
   RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kError, nullptr, 0,
-                    private_methods, arraysize(private_methods));
 }
 
 // Test that nested private members parse
@@ -5941,9 +5915,7 @@ TEST(PrivateMembersNestedNoErrors) {
   };
   // clang-format on
 
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 // Test that acessing undeclared private members result in early errors
@@ -5964,10 +5936,6 @@ TEST(PrivateMembersEarlyErrors) {
   // clang-format on
 
   RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kError, nullptr, 0,
-                    private_methods, arraysize(private_methods));
 }
 
 // Test that acessing wrong kind private members do not error early.
@@ -6032,9 +6000,7 @@ TEST(PrivateMembersWrongAccessNoEarlyErrors) {
   };
   // clang-format on
 
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 TEST(PrivateStaticClassMethodsAndAccessorsNoErrors) {
@@ -6057,11 +6023,7 @@ TEST(PrivateStaticClassMethodsAndAccessorsNoErrors) {
   };
   // clang-format on
 
-  RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kSuccess, nullptr, 0,
-                    private_methods, arraysize(private_methods));
+  RunParserSyncTest(context_data, class_body_data, kSuccess);
 }
 
 TEST(PrivateStaticClassMethodsAndAccessorsDuplicateErrors) {
@@ -6095,10 +6057,6 @@ TEST(PrivateStaticClassMethodsAndAccessorsDuplicateErrors) {
   // clang-format on
 
   RunParserSyncTest(context_data, class_body_data, kError);
-
-  static const ParserFlag private_methods[] = {kAllowHarmonyPrivateMethods};
-  RunParserSyncTest(context_data, class_body_data, kError, nullptr, 0,
-                    private_methods, arraysize(private_methods));
 }
 
 TEST(PrivateClassFieldsNoErrors) {
@@ -6279,15 +6237,9 @@ TEST(PrivateClassFieldsErrors) {
     "#constructor = function() {}",
 
     "# a = 0",
-    "#a() { }",
-    "get #a() { }",
     "#get a() { }",
-    "set #a() { }",
     "#set a() { }",
-    "*#a() { }",
     "#*a() { }",
-    "async #a() { }",
-    "async *#a() { }",
     "async #*a() { }",
 
     "#0 = 0;",
@@ -8267,7 +8219,7 @@ TEST(ModuleParsingInternalsWithImportAssertions) {
   }
 }
 
-TEST(ModuleParsingImportAssertionOrdering) {
+TEST(ModuleParsingModuleRequestOrdering) {
   i::FLAG_harmony_import_assertions = true;
   i::Isolate* isolate = CcTest::i_isolate();
   i::Factory* factory = isolate->factory();
@@ -8339,7 +8291,13 @@ TEST(ModuleParsingImportAssertionOrdering) {
   CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("a"));
   ++request_iterator;
 
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("aa"));
+  ++request_iterator;
+
   CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("b"));
+  ++request_iterator;
+
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("baaaaaar"));
   ++request_iterator;
 
   CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("c"));
@@ -8356,6 +8314,9 @@ TEST(ModuleParsingImportAssertionOrdering) {
   CHECK_EQ(1, (*request_iterator)->import_assertions()->size());
   ++request_iterator;
 
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("foo"));
+  ++request_iterator;
+
   CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("g"));
   CHECK_EQ(0, (*request_iterator)->import_assertions()->size());
   ++request_iterator;
@@ -8509,14 +8470,6 @@ TEST(ModuleParsingImportAssertionOrdering) {
   ++request_iterator;
 
   CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("p"));
-  CHECK_EQ(1, (*request_iterator)->import_assertions()->size());
-  CHECK((*request_iterator)
-            ->import_assertions()
-            ->at(z_string)
-            .first->IsOneByteEqualTo("c"));
-  ++request_iterator;
-
-  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("p"));
   CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
   CHECK((*request_iterator)
             ->import_assertions()
@@ -8528,13 +8481,107 @@ TEST(ModuleParsingImportAssertionOrdering) {
             .first->IsOneByteEqualTo("c"));
   ++request_iterator;
 
-  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("aa"));
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("p"));
+  CHECK_EQ(1, (*request_iterator)->import_assertions()->size());
+  CHECK((*request_iterator)
+            ->import_assertions()
+            ->at(z_string)
+            .first->IsOneByteEqualTo("c"));
+}
+
+TEST(ModuleParsingImportAssertionKeySorting) {
+  i::FLAG_harmony_import_assertions = true;
+  i::Isolate* isolate = CcTest::i_isolate();
+  i::Factory* factory = isolate->factory();
+  v8::HandleScope handles(CcTest::isolate());
+  v8::Local<v8::Context> context = v8::Context::New(CcTest::isolate());
+  v8::Context::Scope context_scope(context);
+  isolate->stack_guard()->SetStackLimit(base::Stack::GetCurrentStackPosition() -
+                                        128 * 1024);
+
+  static const char kSource[] =
+      "import 'a' assert { 'b':'z', 'a': 'c' };"
+      "import 'b' assert { 'aaaaaa': 'c', 'b': 'z' };"
+      "import 'c' assert { '': 'c', 'b': 'z' };"
+      "import 'd' assert { 'aabbbb': 'c', 'aaabbb': 'z' };"
+      // zzzz\u0005 is a one-byte string, yyyy\u0100 is a two-byte string.
+      "import 'e' assert { 'zzzz\\u0005': 'second', 'yyyy\\u0100': 'first' };"
+      // Both keys are two-byte strings.
+      "import 'f' assert { 'xxxx\\u0005\\u0101': 'first', "
+      "'xxxx\\u0100\\u0101': 'second' };";
+  i::Handle<i::String> source = factory->NewStringFromAsciiChecked(kSource);
+  i::Handle<i::Script> script = factory->NewScript(source);
+  i::UnoptimizedCompileState compile_state(isolate);
+  i::UnoptimizedCompileFlags flags =
+      i::UnoptimizedCompileFlags::ForScriptCompile(isolate, *script);
+  flags.set_is_module(true);
+  i::ParseInfo info(isolate, flags, &compile_state);
+  CHECK_PARSE_PROGRAM(&info, script, isolate);
+
+  i::FunctionLiteral* func = info.literal();
+  i::ModuleScope* module_scope = func->scope()->AsModuleScope();
+  CHECK(module_scope->is_module_scope());
+
+  i::SourceTextModuleDescriptor* descriptor = module_scope->module();
+  CHECK_NOT_NULL(descriptor);
+
+  CHECK_EQ(6u, descriptor->module_requests().size());
+  auto request_iterator = descriptor->module_requests().cbegin();
+
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("a"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  auto assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("a"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("c"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("b"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("z"));
   ++request_iterator;
 
-  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("foo"));
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("b"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("aaaaaa"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("c"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("b"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("z"));
   ++request_iterator;
 
-  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("baaaaaar"));
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("c"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->first->IsOneByteEqualTo(""));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("c"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("b"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("z"));
+  ++request_iterator;
+
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("d"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("aaabbb"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("z"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->first->IsOneByteEqualTo("aabbbb"));
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("c"));
+  ++request_iterator;
+
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("e"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("first"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("second"));
+  ++request_iterator;
+
+  CHECK((*request_iterator)->specifier()->IsOneByteEqualTo("f"));
+  CHECK_EQ(2, (*request_iterator)->import_assertions()->size());
+  assertion_iterator = (*request_iterator)->import_assertions()->cbegin();
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("first"));
+  ++assertion_iterator;
+  CHECK(assertion_iterator->second.first->IsOneByteEqualTo("second"));
 }
 
 TEST(DuplicateProtoError) {

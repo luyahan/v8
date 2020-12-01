@@ -2047,16 +2047,16 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       ASSEMBLE_UNARY_OP(D_DInstr(sqdbr), nullInstr, nullInstr);
       break;
     case kS390_FloorFloat:
-      __ fiebra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_NEG_INF,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fiebra(ROUND_TOWARD_NEG_INF, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_CeilFloat:
-      __ fiebra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_POS_INF,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fiebra(ROUND_TOWARD_POS_INF, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_TruncateFloat:
-      __ fiebra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_0,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fiebra(ROUND_TOWARD_0, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     //  Double operations
     case kS390_ModDouble:
@@ -2148,20 +2148,20 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       __ lpdbr(i.OutputDoubleRegister(), i.InputDoubleRegister(0));
       break;
     case kS390_FloorDouble:
-      __ fidbra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_NEG_INF,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fidbra(ROUND_TOWARD_NEG_INF, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_CeilDouble:
-      __ fidbra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_POS_INF,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fidbra(ROUND_TOWARD_POS_INF, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_TruncateDouble:
-      __ fidbra(v8::internal::Assembler::FIDBRA_ROUND_TOWARD_0,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fidbra(ROUND_TOWARD_0, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_RoundDouble:
-      __ fidbra(v8::internal::Assembler::FIDBRA_ROUND_TO_NEAREST_AWAY_FROM_0,
-                i.OutputDoubleRegister(), i.InputDoubleRegister(0));
+      __ fidbra(ROUND_TO_NEAREST_AWAY_FROM_0, i.OutputDoubleRegister(),
+                i.InputDoubleRegister(0));
       break;
     case kS390_NegFloat:
       ASSEMBLE_UNARY_OP(D_DInstr(lcebr), nullInstr, nullInstr);
@@ -4696,9 +4696,8 @@ void CodeGenerator::AssembleConstructFrame() {
   }
 }
 
-void CodeGenerator::AssembleReturn(InstructionOperand* pop) {
+void CodeGenerator::AssembleReturn(InstructionOperand* additional_pop_count) {
   auto call_descriptor = linkage()->GetIncomingDescriptor();
-  int pop_count = static_cast<int>(call_descriptor->StackParameterCount());
 
   const int returns = frame()->GetReturnSlotCount();
   if (returns != 0) {
@@ -4720,30 +4719,78 @@ void CodeGenerator::AssembleReturn(InstructionOperand* pop) {
 
   unwinding_info_writer_.MarkBlockWillExit();
 
+  // We might need r3 for scratch.
+  DCHECK_EQ(0u, call_descriptor->CalleeSavedRegisters() & r5.bit());
   S390OperandConverter g(this, nullptr);
+  const int parameter_count =
+      static_cast<int>(call_descriptor->StackParameterCount());
+
+  // {aditional_pop_count} is only greater than zero if {parameter_count = 0}.
+  // Check RawMachineAssembler::PopAndReturn.
+  if (parameter_count != 0) {
+    if (additional_pop_count->IsImmediate()) {
+      DCHECK_EQ(g.ToConstant(additional_pop_count).ToInt32(), 0);
+    } else if (__ emit_debug_code()) {
+      __ CmpP(g.ToRegister(additional_pop_count), Operand(0));
+      __ Assert(eq, AbortReason::kUnexpectedAdditionalPopValue);
+    }
+  }
+
+  Register argc_reg = r5;
+#ifdef V8_NO_ARGUMENTS_ADAPTOR
+  // Functions with JS linkage have at least one parameter (the receiver).
+  // If {parameter_count} == 0, it means it is a builtin with
+  // kDontAdaptArgumentsSentinel, which takes care of JS arguments popping
+  // itself.
+  const bool drop_jsargs = frame_access_state()->has_frame() &&
+                           call_descriptor->IsJSFunctionCall() &&
+                           parameter_count != 0;
+#else
+  const bool drop_jsargs = false;
+#endif
   if (call_descriptor->IsCFunctionCall()) {
     AssembleDeconstructFrame();
   } else if (frame_access_state()->has_frame()) {
     // Canonicalize JSFunction return sites for now unless they have an variable
     // number of stack slot pops
-    if (pop->IsImmediate() && g.ToConstant(pop).ToInt32() == 0) {
+    if (additional_pop_count->IsImmediate() &&
+        g.ToConstant(additional_pop_count).ToInt32() == 0) {
       if (return_label_.is_bound()) {
         __ b(&return_label_);
         return;
       } else {
         __ bind(&return_label_);
-        AssembleDeconstructFrame();
       }
-    } else {
-      AssembleDeconstructFrame();
     }
+    if (drop_jsargs) {
+      // Get the actual argument count.
+      __ LoadP(argc_reg, MemOperand(fp, StandardFrameConstants::kArgCOffset));
+    }
+    AssembleDeconstructFrame();
   }
-  if (pop->IsImmediate()) {
-    pop_count += g.ToConstant(pop).ToInt32();
+
+  if (drop_jsargs) {
+    // We must pop all arguments from the stack (including the receiver). This
+    // number of arguments is given by max(1 + argc_reg, parameter_count).
+    __ AddP(argc_reg, argc_reg, Operand(1));  // Also pop the receiver.
+    if (parameter_count > 1) {
+      Label skip;
+      __ CmpP(argc_reg, Operand(parameter_count));
+      __ bgt(&skip);
+      __ mov(argc_reg, Operand(parameter_count));
+      __ bind(&skip);
+    }
+    __ Drop(argc_reg);
+  } else if (additional_pop_count->IsImmediate()) {
+    int additional_count = g.ToConstant(additional_pop_count).ToInt32();
+    __ Drop(parameter_count + additional_count);
+  } else if (parameter_count == 0) {
+    __ Drop(g.ToRegister(additional_pop_count));
   } else {
-    __ Drop(g.ToRegister(pop));
+    // {additional_pop_count} is guaranteed to be zero if {parameter_count !=
+    // 0}. Check RawMachineAssembler::PopAndReturn.
+    __ Drop(parameter_count);
   }
-  __ Drop(pop_count);
   __ Ret();
 }
 

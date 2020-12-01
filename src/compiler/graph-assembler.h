@@ -48,7 +48,6 @@ class BasicBlock;
   V(Float64SilenceNaN)                   \
   V(RoundFloat64ToInt32)                 \
   V(TruncateFloat64ToFloat32)            \
-  V(TruncateFloat64ToInt64)              \
   V(TruncateFloat64ToWord32)             \
   V(TruncateInt64ToInt32)                \
   V(Word32ReverseBytes)                  \
@@ -284,6 +283,7 @@ class V8_EXPORT_PRIVATE GraphAssembler {
 
   Node* Float64RoundDown(Node* value);
   Node* Float64RoundTruncate(Node* value);
+  Node* TruncateFloat64ToInt64(Node* value, TruncateKind kind);
 
   Node* BitcastWordToTagged(Node* value);
   Node* BitcastWordToTaggedSigned(Node* value);
@@ -435,11 +435,11 @@ class V8_EXPORT_PRIVATE GraphAssembler {
   // All labels created while a LoopScope is live are considered to be inside
   // the loop.
   template <MachineRepresentation... Reps>
-  class LoopScope final {
+  class V8_NODISCARD LoopScope final {
    private:
     // The internal scope is only here to increment the graph assembler's
     // nesting level prior to `loop_header_label` creation below.
-    class LoopScopeInternal {
+    class V8_NODISCARD LoopScopeInternal {
      public:
       explicit LoopScopeInternal(GraphAssembler* gasm)
           : previous_loop_nesting_level_(gasm->loop_nesting_level_),
@@ -486,7 +486,7 @@ class V8_EXPORT_PRIVATE GraphAssembler {
   };
 
   // Upon destruction, restores effect and control to the state at construction.
-  class RestoreEffectControlScope {
+  class V8_NODISCARD RestoreEffectControlScope {
    public:
     explicit RestoreEffectControlScope(GraphAssembler* gasm)
         : gasm_(gasm), effect_(gasm->effect()), control_(gasm->control()) {}

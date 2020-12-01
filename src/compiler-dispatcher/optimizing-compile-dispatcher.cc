@@ -10,6 +10,7 @@
 #include "src/execution/isolate.h"
 #include "src/execution/local-isolate.h"
 #include "src/heap/local-heap.h"
+#include "src/heap/parked-scope.h"
 #include "src/init/v8.h"
 #include "src/logging/counters.h"
 #include "src/logging/log.h"
@@ -59,9 +60,7 @@ class OptimizingCompileDispatcher::CompileTask : public CancelableTask {
   // v8::Task overrides.
   void RunInternal() override {
     LocalIsolate local_isolate(isolate_, ThreadKind::kBackground);
-    DisallowHeapAllocation no_allocation;
-    DisallowHandleAllocation no_handles;
-    DisallowHandleDereference no_deref;
+    DCHECK(local_isolate.heap()->IsParked());
 
     {
       WorkerThreadRuntimeCallStatsScope runtime_call_stats_scope(

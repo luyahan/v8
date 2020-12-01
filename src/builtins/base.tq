@@ -45,6 +45,8 @@ type PositiveSmi extends Smi;
 
 // The Smi value zero, which is often used as null for HeapObject types.
 type Zero extends PositiveSmi;
+// A tagged value represented by an all-zero bitpattern.
+type TaggedZeroPattern extends TaggedIndex;
 
 // A value with the size of Tagged which may contain arbitrary data.
 type Uninitialized extends Tagged;
@@ -151,6 +153,7 @@ type ObjectHashTable extends HashTable
 extern class NumberDictionary extends HashTable;
 
 type RawPtr generates 'TNode<RawPtrT>' constexpr 'Address';
+type RawPtr<To: type> extends RawPtr;
 type ExternalPointer
     generates 'TNode<ExternalPointerT>' constexpr 'ExternalPointer_t';
 extern class Code extends HeapObject;
@@ -392,6 +395,11 @@ extern enum PrimitiveType { kString, kBoolean, kSymbol, kNumber }
 
 const kNameDictionaryInitialCapacity:
     constexpr int32 generates 'NameDictionary::kInitialCapacity';
+const kOrderedNameDictionaryInitialCapacity:
+    constexpr int32 generates 'OrderedNameDictionary::kInitialCapacity';
+
+const kDictModePrototypes:
+    constexpr bool generates 'V8_DICT_MODE_PROTOTYPES_BOOL';
 
 type TheHole extends Oddball;
 type Null extends Oddball;
@@ -440,6 +448,8 @@ const kReturnString: String = ReturnStringConstant();
 
 const kNaN: NaN = NanConstant();
 const kZero: Zero = %RawDownCast<Zero>(SmiConstant(0));
+const kZeroBitPattern: TaggedZeroPattern = %RawDownCast<TaggedZeroPattern>(
+    Convert<Tagged>(BitcastWordToTaggedSigned(Convert<intptr>(0))));
 
 const true: constexpr bool generates 'true';
 const false: constexpr bool generates 'false';
@@ -609,6 +619,8 @@ extern macro SpeciesConstructor(implicit context: Context)(
 extern macro ConstructorBuiltinsAssembler::IsDictionaryMap(Map): bool;
 extern macro CodeStubAssembler::AllocateNameDictionary(constexpr int32):
     NameDictionary;
+extern macro CodeStubAssembler::AllocateOrderedNameDictionary(constexpr int32):
+    OrderedNameDictionary;
 
 extern builtin ToObject(Context, JSAny): JSReceiver;
 extern macro ToObject_Inline(Context, JSAny): JSReceiver;
@@ -1712,8 +1724,7 @@ macro ConstantIterator<T: type>(value: T): ConstantIterator<T> {
   return ConstantIterator{value};
 }
 
-extern macro FeedbackIteratorSizeFor(constexpr int32): intptr;
-extern macro FeedbackIteratorMapIndexForEntry(constexpr int32): intptr;
-extern macro FeedbackIteratorHandlerIndexForEntry(constexpr int32): intptr;
+extern macro FeedbackIteratorEntrySize(): intptr;
+extern macro FeedbackIteratorHandlerOffset(): intptr;
 extern operator '[]' macro LoadWeakFixedArrayElement(
     WeakFixedArray, intptr): MaybeObject;

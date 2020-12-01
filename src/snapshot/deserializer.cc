@@ -5,6 +5,7 @@
 #include "src/snapshot/deserializer.h"
 
 #include "src/base/logging.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/common/assert-scope.h"
 #include "src/common/external-pointer.h"
@@ -191,7 +192,7 @@ class SlotAccessorForHandle {
 template <typename TSlot>
 int Deserializer::WriteAddress(TSlot dest, Address value) {
   DCHECK(!next_reference_is_weak_);
-  memcpy(dest.ToVoidPtr(), &value, kSystemPointerSize);
+  base::Memcpy(dest.ToVoidPtr(), &value, kSystemPointerSize);
   STATIC_ASSERT(IsAligned(kSystemPointerSize, TSlot::kSlotDataSize));
   return (kSystemPointerSize / TSlot::kSlotDataSize);
 }
@@ -288,7 +289,7 @@ void Deserializer::LogNewMapEvents() {
 }
 
 void Deserializer::WeakenDescriptorArrays() {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   for (Handle<DescriptorArray> descriptor_array : new_descriptor_arrays_) {
     DCHECK(descriptor_array->IsStrongDescriptorArray());
     descriptor_array->set_map(ReadOnlyRoots(isolate()).descriptor_array_map());
@@ -310,7 +311,7 @@ StringTableInsertionKey::StringTableInsertionKey(Handle<String> string)
   DCHECK(string->IsInternalizedString());
 }
 
-bool StringTableInsertionKey::IsMatch(String string) {
+bool StringTableInsertionKey::IsMatch(Isolate* isolate, String string) {
   // We want to compare the content of two strings here.
   return string_->SlowEquals(string);
 }
@@ -321,7 +322,7 @@ Handle<String> StringTableInsertionKey::AsHandle(Isolate* isolate) {
 
 uint32_t StringTableInsertionKey::ComputeRawHashField(String string) {
   // Make sure raw_hash_field() is computed.
-  string.Hash();
+  string.EnsureHash();
   return string.raw_hash_field();
 }
 

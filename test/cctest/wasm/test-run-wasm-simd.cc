@@ -1630,7 +1630,7 @@ WASM_SIMD_TEST(I32x4BitMask) {
 }
 
 // TODO(v8:10997) Prototyping i64x2.bitmask.
-#if V8_TARGET_ARCH_X64
+#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM
 WASM_SIMD_TEST_NO_LOWERING(I64x2BitMask) {
   FLAG_SCOPE(wasm_simd_post_mvp);
   WasmRunner<int32_t, int64_t> r(execution_tier, lower_simd);
@@ -1648,7 +1648,7 @@ WASM_SIMD_TEST_NO_LOWERING(I64x2BitMask) {
     CHECK_EQ(actual, expected);
   }
 }
-#endif  // V8_TARGET_ARCH_X64
+#endif  // V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_ARM64 || V8_TARGET_ARCH_ARM
 
 WASM_SIMD_TEST(I8x16Splat) {
   WasmRunner<int32_t, int32_t> r(execution_tier, lower_simd);
@@ -2814,7 +2814,7 @@ WASM_SIMD_SELECT_TEST(8x16)
 // Test Select by making a mask where the 0th and 3rd lanes are non-zero and the
 // rest 0. The mask is not the result of a comparison op.
 #define WASM_SIMD_NON_CANONICAL_SELECT_TEST(format)                           \
-  WASM_SIMD_TEST_NO_LOWERING(S##format##NonCanonicalSelect) {                 \
+  WASM_SIMD_TEST(S##format##NonCanonicalSelect) {                             \
     WasmRunner<int32_t, int32_t, int32_t, int32_t> r(execution_tier,          \
                                                      lower_simd);             \
     byte val1 = 0;                                                            \
@@ -3565,6 +3565,60 @@ WASM_SIMD_TEST(SimdF32x4SetGlobal) {
   CHECK_EQ(GetScalar(global, 3), 65.0f);
 }
 
+#if V8_TARGET_ARCH_ARM64
+// TODO(v8:11168): Prototyping prefetch.
+WASM_SIMD_TEST(SimdPrefetch) {
+  FLAG_SCOPE(wasm_simd_post_mvp);
+
+  {
+    // Test PrefetchT.
+    WasmRunner<int32_t> r(execution_tier, lower_simd);
+    int32_t* memory =
+        r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+    BUILD(r, WASM_ZERO, WASM_SIMD_OP(kExprPrefetchT), ZERO_ALIGNMENT,
+          ZERO_OFFSET,
+          WASM_SIMD_I32x4_EXTRACT_LANE(0, WASM_SIMD_LOAD_MEM(WASM_ZERO)));
+
+    FOR_INT32_INPUTS(i) {
+      r.builder().WriteMemory(&memory[0], i);
+      CHECK_EQ(i, r.Call());
+    }
+  }
+
+  {
+    // Test PrefetchNT.
+    WasmRunner<int32_t> r(execution_tier, lower_simd);
+    int32_t* memory =
+        r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+    BUILD(r, WASM_ZERO, WASM_SIMD_OP(kExprPrefetchNT), ZERO_ALIGNMENT,
+          ZERO_OFFSET,
+          WASM_SIMD_I32x4_EXTRACT_LANE(0, WASM_SIMD_LOAD_MEM(WASM_ZERO)));
+
+    FOR_INT32_INPUTS(i) {
+      r.builder().WriteMemory(&memory[0], i);
+      CHECK_EQ(i, r.Call());
+    }
+  }
+
+  {
+    // Test OOB.
+    WasmRunner<int32_t> r(execution_tier, lower_simd);
+    int32_t* memory =
+        r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+
+    // Prefetch kWasmPageSize+1 but still load from 0.
+    BUILD(r, WASM_I32V(kWasmPageSize + 1), WASM_SIMD_OP(kExprPrefetchNT),
+          ZERO_ALIGNMENT, ZERO_OFFSET,
+          WASM_SIMD_I32x4_EXTRACT_LANE(0, WASM_SIMD_LOAD_MEM(WASM_ZERO)));
+
+    FOR_INT32_INPUTS(i) {
+      r.builder().WriteMemory(&memory[0], i);
+      CHECK_EQ(i, r.Call());
+    }
+  }
+}
+#endif  // V8_TARGET_ARCH_ARM64
+
 WASM_SIMD_TEST(SimdLoadStoreLoad) {
   WasmRunner<int32_t> r(execution_tier, lower_simd);
   int32_t* memory =
@@ -3578,6 +3632,33 @@ WASM_SIMD_TEST(SimdLoadStoreLoad) {
     int32_t expected = i;
     r.builder().WriteMemory(&memory[1], expected);
     CHECK_EQ(expected, r.Call());
+  }
+
+  {
+    // OOB tests for loads.
+    WasmRunner<int32_t, uint32_t> r(execution_tier, lower_simd);
+    r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+    BUILD(r, WASM_SIMD_I32x4_EXTRACT_LANE(
+                 0, WASM_SIMD_LOAD_MEM(WASM_GET_LOCAL(0))));
+
+    for (uint32_t offset = kWasmPageSize - (kSimd128Size - 1);
+         offset < kWasmPageSize; ++offset) {
+      CHECK_TRAP(r.Call(offset));
+    }
+  }
+
+  {
+    // OOB tests for stores.
+    WasmRunner<int32_t, uint32_t> r(execution_tier, lower_simd);
+    r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+    BUILD(r,
+          WASM_SIMD_STORE_MEM(WASM_GET_LOCAL(0), WASM_SIMD_LOAD_MEM(WASM_ZERO)),
+          WASM_ONE);
+
+    for (uint32_t offset = kWasmPageSize - (kSimd128Size - 1);
+         offset < kWasmPageSize; ++offset) {
+      CHECK_TRAP(r.Call(offset));
+    }
   }
 }
 
@@ -3601,6 +3682,32 @@ WASM_SIMD_TEST(SimdLoadStoreLoadMemargOffset) {
     // Index 1 of memory (int32_t) will be bytes 4 to 8.
     r.builder().WriteMemory(&memory[1], expected);
     CHECK_EQ(expected, r.Call());
+  }
+
+  {
+    // OOB tests for loads with offsets.
+    for (uint32_t offset = kWasmPageSize - (kSimd128Size - 1);
+         offset < kWasmPageSize; ++offset) {
+      WasmRunner<int32_t> r(execution_tier, lower_simd);
+      r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+      BUILD(r, WASM_SIMD_I32x4_EXTRACT_LANE(
+                   0, WASM_SIMD_LOAD_MEM_OFFSET(U32V_3(offset), WASM_ZERO)));
+      CHECK_TRAP(r.Call());
+    }
+  }
+
+  {
+    // OOB tests for stores with offsets
+    for (uint32_t offset = kWasmPageSize - (kSimd128Size - 1);
+         offset < kWasmPageSize; ++offset) {
+      WasmRunner<int32_t, uint32_t> r(execution_tier, lower_simd);
+      r.builder().AddMemoryElems<int32_t>(kWasmPageSize / sizeof(int32_t));
+      BUILD(r,
+            WASM_SIMD_STORE_MEM_OFFSET(U32V_3(offset), WASM_ZERO,
+                                       WASM_SIMD_LOAD_MEM(WASM_ZERO)),
+            WASM_ONE);
+      CHECK_TRAP(r.Call(offset));
+    }
   }
 }
 
@@ -3863,7 +3970,7 @@ WASM_SIMD_TEST(S128Load64Zero) {
   RunLoadZeroTest<int64_t>(execution_tier, lower_simd, kExprS128Load64Zero);
 }
 
-#if V8_TARGET_ARCH_X64
+#if V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_IA32
 // TODO(v8:10975): Prototyping load lane and store lane.
 template <typename T>
 void RunLoadLaneTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
@@ -3968,7 +4075,9 @@ WASM_SIMD_TEST_NO_LOWERING(S128Load64Lane) {
   RunLoadLaneTest<int64_t>(execution_tier, lower_simd, kExprS128Load64Lane,
                            kExprI64x2Splat);
 }
+#endif  // V8_TARGET_ARCH_X64 || V8_TARGET_ARCH_IA32
 
+#if V8_TARGET_ARCH_X64
 template <typename T>
 void RunStoreLaneTest(TestExecutionTier execution_tier, LowerSimd lower_simd,
                       WasmOpcode store_op, WasmOpcode splat_op) {

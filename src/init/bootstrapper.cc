@@ -21,6 +21,7 @@
 #include "src/extensions/ignition-statistics-extension.h"
 #include "src/extensions/statistics-extension.h"
 #include "src/extensions/trigger-failure-extension.h"
+#include "src/objects/objects.h"
 #ifdef ENABLE_VTUNE_TRACEMARK
 #include "src/extensions/vtunedomain-support-extension.h"
 #endif  // ENABLE_VTUNE_TRACEMARK
@@ -80,7 +81,7 @@ bool SourceCodeCache::Lookup(Isolate* isolate, Vector<const char> name,
                              Handle<SharedFunctionInfo>* handle) {
   for (int i = 0; i < cache_.length(); i += 2) {
     SeqOneByteString str = SeqOneByteString::cast(cache_.get(i));
-    if (str.IsOneByteEqualTo(Vector<const uint8_t>::cast(name))) {
+    if (str.IsOneByteEqualTo(name)) {
       *handle = Handle<SharedFunctionInfo>(
           SharedFunctionInfo::cast(cache_.get(i + 1)), isolate);
       return true;
@@ -1400,6 +1401,11 @@ void Genesis::HookUpGlobalObject(Handle<JSGlobalObject> global_object) {
   native_context()->set_security_token(*global_object);
 
   TransferNamedProperties(global_object_from_snapshot, global_object);
+  if (global_object_from_snapshot->HasDictionaryElements()) {
+    JSObject::NormalizeElements(global_object);
+  }
+  DCHECK_EQ(global_object_from_snapshot->GetElementsKind(),
+            global_object->GetElementsKind());
   TransferIndexedProperties(global_object_from_snapshot, global_object);
 }
 
@@ -2393,6 +2399,10 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
     InstallFunctionWithBuiltinId(isolate_, promise_fun, "allSettled",
                                  Builtins::kPromiseAllSettled, 1, true);
 
+    Handle<JSFunction> promise_any = InstallFunctionWithBuiltinId(
+        isolate_, promise_fun, "any", Builtins::kPromiseAny, 1, true);
+    native_context()->set_promise_any(*promise_any);
+
     InstallFunctionWithBuiltinId(isolate_, promise_fun, "race",
                                  Builtins::kPromiseRace, 1, true);
 
@@ -2651,6 +2661,11 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
   // -- E r r o r
   InstallError(isolate_, global, factory->Error_string(),
                Context::ERROR_FUNCTION_INDEX);
+
+  // -- A g g r e g a t e E r r o r
+  InstallError(isolate_, global, factory->AggregateError_string(),
+               Context::AGGREGATE_ERROR_FUNCTION_INDEX,
+               Builtins::kAggregateErrorConstructor, 2, 2);
 
   // -- E v a l E r r o r
   InstallError(isolate_, global, factory->EvalError_string(),
@@ -3594,10 +3609,11 @@ void Genesis::InitializeGlobal(Handle<JSGlobalObject> global_object,
               .ToHandleChecked();
 
     // done
-    // TODO(bmeurer): Once FLAG_modify_field_representation_inplace is always
-    // on, we can say Representation::HeapObject() here and have the inplace
-    // update logic take care of the case where someone ever stores a Smi into
-    // the done field.
+    // TODO(ishell): Consider using Representation::HeapObject() here and rely
+    // on the inplace update logic to take care of the case where someone ever
+    // stores a Smi into the done field. The logic works fine but in --jitless
+    // mode FLAG_track_heap_object_fields is off and the logic doesn't handle
+    // generalizations of HeapObject representation properly.
     map = Map::CopyWithField(isolate(), map, factory->done_string(),
                              FieldType::Any(isolate()), NONE,
                              PropertyConstness::kConst,
@@ -4186,6 +4202,10 @@ void Genesis::InitializeCallSiteBuiltins() {
 
   FunctionInfo infos[] = {
       {"getColumnNumber", Builtins::kCallSitePrototypeGetColumnNumber},
+      {"getEnclosingColumnNumber",
+        Builtins::kCallSitePrototypeGetEnclosingColumnNumber},
+      {"getEnclosingLineNumber",
+        Builtins::kCallSitePrototypeGetEnclosingLineNumber},
       {"getEvalOrigin", Builtins::kCallSitePrototypeGetEvalOrigin},
       {"getFileName", Builtins::kCallSitePrototypeGetFileName},
       {"getFunction", Builtins::kCallSitePrototypeGetFunction},
@@ -4219,7 +4239,6 @@ void Genesis::InitializeCallSiteBuiltins() {
 #define EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(id) \
   void Genesis::InitializeGlobal_##id() {}
 
-EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_private_methods)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_regexp_sequence)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_top_level_await)
 EMPTY_INITIALIZE_GLOBAL_FOR_FEATURE(harmony_logical_assignment)
@@ -4339,34 +4358,6 @@ void Genesis::InitializeGlobal_harmony_weak_refs_with_cleanup_some() {
                         DONT_ENUM);
 }
 
-void Genesis::InitializeGlobal_harmony_promise_any() {
-  if (!FLAG_harmony_promise_any) {
-    return;
-  }
-
-  Factory* factory = isolate()->factory();
-  Handle<JSGlobalObject> global(native_context()->global_object(), isolate());
-
-  InstallError(isolate_, global, factory->AggregateError_string(),
-               Context::AGGREGATE_ERROR_FUNCTION_INDEX,
-               Builtins::kAggregateErrorConstructor, 2, 2);
-
-  // Setup %AggregateErrorPrototype%.
-  Handle<JSFunction> aggregate_error_function(
-      native_context()->aggregate_error_function(), isolate());
-  Handle<JSObject> prototype(
-      JSObject::cast(aggregate_error_function->instance_prototype()),
-      isolate());
-
-  Handle<JSFunction> promise_fun(
-      JSFunction::cast(
-          isolate()->native_context()->get(Context::PROMISE_FUNCTION_INDEX)),
-      isolate());
-  Handle<JSFunction> promise_any = InstallFunctionWithBuiltinId(
-      isolate_, promise_fun, "any", Builtins::kPromiseAny, 1, true);
-  native_context()->set_promise_any(*promise_any);
-}
-
 void Genesis::InitializeGlobal_harmony_regexp_match_indices() {
   if (!FLAG_harmony_regexp_match_indices) return;
 
@@ -4402,6 +4393,46 @@ void Genesis::InitializeGlobal_regexp_linear_flag() {
 
   // Store regexp prototype map again after change.
   native_context()->set_regexp_prototype_map(regexp_prototype->map());
+}
+
+void Genesis::InitializeGlobal_harmony_relative_indexing_methods() {
+  if (!FLAG_harmony_relative_indexing_methods) return;
+
+  {
+    Handle<JSFunction> array_function(native_context()->array_function(),
+                                      isolate());
+    Handle<JSObject> array_prototype(
+        JSObject::cast(array_function->instance_prototype()), isolate());
+
+    SimpleInstallFunction(isolate(), array_prototype, "at",
+                          Builtins::kArrayPrototypeAt, 1, true);
+
+    Handle<JSObject> unscopables = Handle<JSObject>::cast(
+        JSReceiver::GetProperty(isolate(), array_prototype,
+                                factory()->unscopables_symbol())
+            .ToHandleChecked());
+    InstallTrueValuedProperty(isolate(), unscopables, "at");
+  }
+
+  {
+    Handle<JSFunction> string_function(native_context()->string_function(),
+                                       isolate());
+    Handle<JSObject> string_prototype(
+        JSObject::cast(string_function->instance_prototype()), isolate());
+
+    SimpleInstallFunction(isolate(), string_prototype, "at",
+                          Builtins::kStringPrototypeAt, 1, true);
+  }
+
+  {
+    Handle<JSFunction> typed_array_function(
+        native_context()->typed_array_function(), isolate());
+    Handle<JSObject> typed_array_prototype(
+        JSObject::cast(typed_array_function->instance_prototype()), isolate());
+
+    SimpleInstallFunction(isolate(), typed_array_prototype, "at",
+                          Builtins::kTypedArrayPrototypeAt, 1, true);
+  }
 }
 
 #ifdef V8_INTL_SUPPORT
@@ -5168,7 +5199,7 @@ void Genesis::TransferNamedProperties(Handle<JSObject> from,
   } else if (from->IsJSGlobalObject()) {
     // Copy all keys and values in enumeration order.
     Handle<GlobalDictionary> properties(
-        JSGlobalObject::cast(*from).global_dictionary(), isolate());
+        JSGlobalObject::cast(*from).global_dictionary(kAcquireLoad), isolate());
     Handle<FixedArray> indices =
         GlobalDictionary::IterationIndices(isolate(), properties);
     for (int i = 0; i < indices->length(); i++) {
@@ -5182,6 +5213,29 @@ void Genesis::TransferNamedProperties(Handle<JSObject> from,
       if (value->IsTheHole(isolate())) continue;
       PropertyDetails details = cell->property_details();
       if (details.kind() != kData) continue;
+      JSObject::AddProperty(isolate(), to, key, value, details.attributes());
+    }
+
+  } else if (V8_DICT_MODE_PROTOTYPES_BOOL) {
+    // Copy all keys and values in enumeration order.
+    Handle<OrderedNameDictionary> properties = Handle<OrderedNameDictionary>(
+        from->property_dictionary_ordered(), isolate());
+    ReadOnlyRoots roots(isolate());
+    for (InternalIndex entry : properties->IterateEntries()) {
+      Object raw_key;
+      if (!properties->ToKey(roots, entry, &raw_key)) continue;
+
+      DCHECK(raw_key.IsName());
+      Handle<Name> key(Name::cast(raw_key), isolate());
+      // If the property is already there we skip it.
+      if (PropertyAlreadyExists(isolate(), to, key)) continue;
+      // Set the property.
+      Handle<Object> value =
+          Handle<Object>(properties->ValueAt(entry), isolate());
+      DCHECK(!value->IsCell());
+      DCHECK(!value->IsTheHole(isolate()));
+      PropertyDetails details = properties->DetailsAt(entry);
+      DCHECK_EQ(kData, details.kind());
       JSObject::AddProperty(isolate(), to, key, value, details.attributes());
     }
   } else {

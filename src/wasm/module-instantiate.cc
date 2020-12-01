@@ -6,6 +6,7 @@
 
 #include "src/api/api.h"
 #include "src/asmjs/asm-js.h"
+#include "src/base/platform/wrappers.h"
 #include "src/logging/counters.h"
 #include "src/logging/metrics.h"
 #include "src/numbers/conversions-inl.h"
@@ -602,24 +603,24 @@ MaybeHandle<WasmInstanceObject> InstanceBuilder::Build() {
   //--------------------------------------------------------------------------
   // Create maps for managed objects (GC proposal).
   // Must happen before {InitGlobals} because globals can refer to these maps.
+  // We do not need to cache the canonical rtts to (rtt.canon any)'s subtype
+  // list.
   //--------------------------------------------------------------------------
   if (enabled_.has_gc()) {
     Handle<FixedArray> maps = isolate_->factory()->NewUninitializedFixedArray(
         static_cast<int>(module_->type_kinds.size()));
-    // TODO(7748): Do we want a different sentinel here?
-    Handle<Map> anyref_sentinel_map = isolate_->factory()->null_map();
+    Handle<Map> anyref_map =
+        Handle<Map>::cast(isolate_->root_handle(RootIndex::kWasmRttAnyrefMap));
     for (int map_index = 0;
          map_index < static_cast<int>(module_->type_kinds.size());
          map_index++) {
       Handle<Map> map;
       switch (module_->type_kinds[map_index]) {
         case kWasmStructTypeCode:
-          map = CreateStructMap(isolate_, module_, map_index,
-                                anyref_sentinel_map);
+          map = CreateStructMap(isolate_, module_, map_index, anyref_map);
           break;
         case kWasmArrayTypeCode:
-          map =
-              CreateArrayMap(isolate_, module_, map_index, anyref_sentinel_map);
+          map = CreateArrayMap(isolate_, module_, map_index, anyref_map);
           break;
         case kWasmFunctionTypeCode:
           // TODO(7748): Think about canonicalizing rtts to make them work for
@@ -885,7 +886,7 @@ void InstanceBuilder::LoadDataSegments(Handle<WasmInstanceObject> instance) {
                                         instance->memory_size()));
       byte* dest = instance->memory_start() + dest_offset;
       const byte* src = wire_bytes.begin() + segment.source.offset();
-      memcpy(dest, src, size);
+      base::Memcpy(dest, src, size);
     }
   }
 }
@@ -1598,6 +1599,8 @@ Handle<Object> InstanceBuilder::RecursivelyEvaluateGlobalInitializer(
           return isolate_->root_handle(RootIndex::kWasmRttFuncrefMap);
         case wasm::HeapType::kI31:
           return isolate_->root_handle(RootIndex::kWasmRttI31refMap);
+        case wasm::HeapType::kAny:
+          return isolate_->root_handle(RootIndex::kWasmRttAnyrefMap);
         case wasm::HeapType::kExn:
           UNIMPLEMENTED();  // TODO(jkummerow): This is going away?
         case wasm::HeapType::kBottom:
@@ -1675,8 +1678,8 @@ void InstanceBuilder::InitGlobals(Handle<WasmInstanceObject> instance) {
           size_t size = (global.type == kWasmI64 || global.type == kWasmF64)
                             ? sizeof(double)
                             : sizeof(int32_t);
-          memcpy(raw_buffer_ptr(untagged_globals_, new_offset),
-                 raw_buffer_ptr(untagged_globals_, old_offset), size);
+          base::Memcpy(raw_buffer_ptr(untagged_globals_, new_offset),
+                       raw_buffer_ptr(untagged_globals_, old_offset), size);
         }
         break;
       }
@@ -1879,7 +1882,7 @@ void InstanceBuilder::ProcessExports(Handle<WasmInstanceObject> instance) {
     v8::Maybe<bool> status = JSReceiver::DefineOwnProperty(
         isolate_, export_to, name, &desc, Just(kThrowOnError));
     if (!status.IsJust()) {
-      DisallowHeapAllocation no_gc;
+      DisallowGarbageCollection no_gc;
       TruncatedUserString<> trunc_name(name->GetCharVector<uint8_t>(no_gc));
       thrower_->LinkError("export of %.*s failed.", trunc_name.length(),
                           trunc_name.start());

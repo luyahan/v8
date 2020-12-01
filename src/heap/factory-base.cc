@@ -21,6 +21,7 @@
 #include "src/objects/shared-function-info-inl.h"
 #include "src/objects/source-text-module.h"
 #include "src/objects/string-inl.h"
+#include "src/objects/string.h"
 #include "src/objects/template-objects-inl.h"
 
 namespace v8 {
@@ -274,14 +275,8 @@ Handle<UncompiledDataWithoutPreparseData>
 FactoryBase<Impl>::NewUncompiledDataWithoutPreparseData(
     Handle<String> inferred_name, int32_t start_position,
     int32_t end_position) {
-  Handle<UncompiledDataWithoutPreparseData> result = handle(
-      UncompiledDataWithoutPreparseData::cast(NewWithImmortalMap(
-          impl()->read_only_roots().uncompiled_data_without_preparse_data_map(),
-          AllocationType::kOld)),
-      isolate());
-
-  result->Init(impl(), *inferred_name, start_position, end_position);
-  return result;
+  return TorqueGeneratedFactory<Impl>::NewUncompiledDataWithoutPreparseData(
+      inferred_name, start_position, end_position, AllocationType::kOld);
 }
 
 template <typename Impl>
@@ -289,16 +284,9 @@ Handle<UncompiledDataWithPreparseData>
 FactoryBase<Impl>::NewUncompiledDataWithPreparseData(
     Handle<String> inferred_name, int32_t start_position, int32_t end_position,
     Handle<PreparseData> preparse_data) {
-  Handle<UncompiledDataWithPreparseData> result = handle(
-      UncompiledDataWithPreparseData::cast(NewWithImmortalMap(
-          impl()->read_only_roots().uncompiled_data_with_preparse_data_map(),
-          AllocationType::kOld)),
-      isolate());
-
-  result->Init(impl(), *inferred_name, start_position, end_position,
-               *preparse_data);
-
-  return result;
+  return TorqueGeneratedFactory<Impl>::NewUncompiledDataWithPreparseData(
+      inferred_name, start_position, end_position, preparse_data,
+      AllocationType::kOld);
 }
 
 template <typename Impl>
@@ -507,8 +495,9 @@ Handle<SeqOneByteString> FactoryBase<Impl>::NewOneByteInternalizedString(
     const Vector<const uint8_t>& str, uint32_t raw_hash_field) {
   Handle<SeqOneByteString> result =
       AllocateRawOneByteInternalizedString(str.length(), raw_hash_field);
-  DisallowHeapAllocation no_gc;
-  MemCopy(result->GetChars(no_gc), str.begin(), str.length());
+  DisallowGarbageCollection no_gc;
+  MemCopy(result->GetChars(no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()),
+          str.begin(), str.length());
   return result;
 }
 
@@ -517,8 +506,9 @@ Handle<SeqTwoByteString> FactoryBase<Impl>::NewTwoByteInternalizedString(
     const Vector<const uc16>& str, uint32_t raw_hash_field) {
   Handle<SeqTwoByteString> result =
       AllocateRawTwoByteInternalizedString(str.length(), raw_hash_field);
-  DisallowHeapAllocation no_gc;
-  MemCopy(result->GetChars(no_gc), str.begin(), str.length() * kUC16Size);
+  DisallowGarbageCollection no_gc;
+  MemCopy(result->GetChars(no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()),
+          str.begin(), str.length() * kUC16Size);
   return result;
 }
 
@@ -579,8 +569,8 @@ MaybeHandle<String> FactoryBase<Impl>::NewConsString(
   int length = left_length + right_length;
 
   if (length == 2) {
-    uint16_t c1 = left->Get(0);
-    uint16_t c2 = right->Get(0);
+    uint16_t c1 = left->Get(0, isolate());
+    uint16_t c2 = right->Get(0, isolate());
     return MakeOrFindTwoCharacterString(c1, c2);
   }
 
@@ -605,24 +595,33 @@ MaybeHandle<String> FactoryBase<Impl>::NewConsString(
     if (is_one_byte) {
       Handle<SeqOneByteString> result =
           NewRawOneByteString(length, allocation).ToHandleChecked();
-      DisallowHeapAllocation no_gc;
-      uint8_t* dest = result->GetChars(no_gc);
+      DisallowGarbageCollection no_gc;
+      SharedStringAccessGuardIfNeeded access_guard(isolate());
+      uint8_t* dest = result->GetChars(no_gc, access_guard);
       // Copy left part.
-      const uint8_t* src = left->template GetChars<uint8_t>(no_gc);
-      CopyChars(dest, src, left_length);
+      {
+        const uint8_t* src =
+            left->template GetChars<uint8_t>(no_gc, access_guard);
+        CopyChars(dest, src, left_length);
+      }
       // Copy right part.
-      src = right->template GetChars<uint8_t>(no_gc);
-      CopyChars(dest + left_length, src, right_length);
+      {
+        const uint8_t* src =
+            right->template GetChars<uint8_t>(no_gc, access_guard);
+        CopyChars(dest + left_length, src, right_length);
+      }
       return result;
     }
 
     Handle<SeqTwoByteString> result =
         NewRawTwoByteString(length, allocation).ToHandleChecked();
 
-    DisallowHeapAllocation pointer_stays_valid;
-    uc16* sink = result->GetChars(pointer_stays_valid);
-    String::WriteToFlat(*left, sink, 0, left->length());
-    String::WriteToFlat(*right, sink + left->length(), 0, right->length());
+    DisallowGarbageCollection no_gc;
+    SharedStringAccessGuardIfNeeded access_guard(isolate());
+    uc16* sink = result->GetChars(no_gc, access_guard);
+    String::WriteToFlat(*left, sink, 0, left->length(), access_guard);
+    String::WriteToFlat(*right, sink + left->length(), 0, right->length(),
+                        access_guard);
     return result;
   }
 
@@ -648,7 +647,7 @@ Handle<String> FactoryBase<Impl>::NewConsString(Handle<String> left,
                                    allocation)),
       isolate());
 
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   WriteBarrierMode mode = result->GetWriteBarrierMode(no_gc);
 
   result->set_raw_hash_field(String::kEmptyHashField);

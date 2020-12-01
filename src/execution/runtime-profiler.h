@@ -49,7 +49,7 @@ class RuntimeProfiler {
                 CodeKind code_kind);
   void Baseline(JSFunction function, OptimizationReason reason);
 
-  class MarkCandidatesForOptimizationScope final {
+  class V8_NODISCARD MarkCandidatesForOptimizationScope final {
    public:
     explicit MarkCandidatesForOptimizationScope(RuntimeProfiler* profiler);
     ~MarkCandidatesForOptimizationScope();
@@ -57,7 +57,7 @@ class RuntimeProfiler {
    private:
     HandleScope handle_scope_;
     RuntimeProfiler* const profiler_;
-    DisallowHeapAllocation no_gc;
+    DisallowGarbageCollection no_gc;
   };
 
   Isolate* isolate_;

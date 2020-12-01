@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "include/libplatform/libplatform.h"
 #include "src/api/api-inl.h"
 #include "src/init/v8.h"
 #include "src/objects/managed.h"
@@ -38,7 +39,8 @@ class MockPlatform final : public TestPlatform {
   std::unique_ptr<v8::JobHandle> PostJob(
       v8::TaskPriority priority,
       std::unique_ptr<v8::JobTask> job_task) override {
-    auto orig_job_handle = TestPlatform::PostJob(priority, std::move(job_task));
+    auto orig_job_handle = v8::platform::NewDefaultJobHandle(
+        this, priority, std::move(job_task), 1);
     auto job_handle =
         std::make_unique<MockJobHandle>(std::move(orig_job_handle), this);
     job_handles_.insert(job_handle.get());
@@ -67,6 +69,7 @@ class MockPlatform final : public TestPlatform {
   class MockTaskRunner final : public TaskRunner {
    public:
     void PostTask(std::unique_ptr<v8::Task> task) override {
+      base::MutexGuard lock_scope(&tasks_lock_);
       tasks_.push(std::move(task));
     }
 
@@ -93,14 +96,20 @@ class MockPlatform final : public TestPlatform {
     bool NonNestableDelayedTasksEnabled() const override { return true; }
 
     void ExecuteTasks() {
-      while (!tasks_.empty()) {
-        std::unique_ptr<Task> task = std::move(tasks_.front());
-        tasks_.pop();
+      std::queue<std::unique_ptr<v8::Task>> tasks;
+      {
+        base::MutexGuard lock_scope(&tasks_lock_);
+        tasks.swap(tasks_);
+      }
+      while (!tasks.empty()) {
+        std::unique_ptr<Task> task = std::move(tasks.front());
+        tasks.pop();
         task->Run();
       }
     }
 
    private:
+    base::Mutex tasks_lock_;
     // We do not execute tasks concurrently, so we only need one list of tasks.
     std::queue<std::unique_ptr<v8::Task>> tasks_;
   };

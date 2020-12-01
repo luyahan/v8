@@ -29,11 +29,13 @@
 
 #include "src/base/hashmap-entry.h"
 #include "src/base/logging.h"
+#include "src/base/platform/wrappers.h"
 #include "src/common/globals.h"
 #include "src/heap/factory-inl.h"
 #include "src/heap/local-factory-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/objects.h"
+#include "src/objects/string.h"
 #include "src/strings/char-predicates-inl.h"
 #include "src/strings/string-hasher.h"
 #include "src/utils/utils-inl.h"
@@ -114,7 +116,7 @@ uint16_t AstRawString::FirstCharacter() const {
   return *c;
 }
 
-bool AstRawString::Compare(const AstRawString* lhs, const AstRawString* rhs) {
+bool AstRawString::Equal(const AstRawString* lhs, const AstRawString* rhs) {
   DCHECK_EQ(lhs->Hash(), rhs->Hash());
 
   if (lhs->length() != rhs->length()) return false;
@@ -124,25 +126,63 @@ bool AstRawString::Compare(const AstRawString* lhs, const AstRawString* rhs) {
   size_t length = rhs->length();
   if (lhs->is_one_byte()) {
     if (rhs->is_one_byte()) {
-      return CompareCharsUnsigned(reinterpret_cast<const uint8_t*>(l),
-                                  reinterpret_cast<const uint8_t*>(r),
-                                  length) == 0;
+      return CompareCharsEqualUnsigned(reinterpret_cast<const uint8_t*>(l),
+                                       reinterpret_cast<const uint8_t*>(r),
+                                       length);
     } else {
-      return CompareCharsUnsigned(reinterpret_cast<const uint8_t*>(l),
-                                  reinterpret_cast<const uint16_t*>(r),
-                                  length) == 0;
+      return CompareCharsEqualUnsigned(reinterpret_cast<const uint8_t*>(l),
+                                       reinterpret_cast<const uint16_t*>(r),
+                                       length);
     }
   } else {
     if (rhs->is_one_byte()) {
-      return CompareCharsUnsigned(reinterpret_cast<const uint16_t*>(l),
-                                  reinterpret_cast<const uint8_t*>(r),
-                                  length) == 0;
+      return CompareCharsEqualUnsigned(reinterpret_cast<const uint16_t*>(l),
+                                       reinterpret_cast<const uint8_t*>(r),
+                                       length);
     } else {
-      return CompareCharsUnsigned(reinterpret_cast<const uint16_t*>(l),
-                                  reinterpret_cast<const uint16_t*>(r),
-                                  length) == 0;
+      return CompareCharsEqualUnsigned(reinterpret_cast<const uint16_t*>(l),
+                                       reinterpret_cast<const uint16_t*>(r),
+                                       length);
     }
   }
+}
+
+int AstRawString::Compare(const AstRawString* lhs, const AstRawString* rhs) {
+  // Fast path for equal pointers.
+  if (lhs == rhs) return 0;
+
+  const unsigned char* lhs_data = lhs->raw_data();
+  const unsigned char* rhs_data = rhs->raw_data();
+  size_t length = std::min(lhs->length(), rhs->length());
+
+  // Code point order by contents.
+  if (lhs->is_one_byte()) {
+    if (rhs->is_one_byte()) {
+      if (int result = CompareCharsUnsigned(
+              reinterpret_cast<const uint8_t*>(lhs_data),
+              reinterpret_cast<const uint8_t*>(rhs_data), length))
+        return result;
+    } else {
+      if (int result = CompareCharsUnsigned(
+              reinterpret_cast<const uint8_t*>(lhs_data),
+              reinterpret_cast<const uint16_t*>(rhs_data), length))
+        return result;
+    }
+  } else {
+    if (rhs->is_one_byte()) {
+      if (int result = CompareCharsUnsigned(
+              reinterpret_cast<const uint16_t*>(lhs_data),
+              reinterpret_cast<const uint8_t*>(rhs_data), length))
+        return result;
+    } else {
+      if (int result = CompareCharsUnsigned(
+              reinterpret_cast<const uint16_t*>(lhs_data),
+              reinterpret_cast<const uint16_t*>(rhs_data), length))
+        return result;
+    }
+  }
+
+  return lhs->byte_length() - rhs->byte_length();
 }
 
 template <typename LocalIsolate>
@@ -192,15 +232,18 @@ Handle<String> AstConsString::AllocateFlat(LocalIsolate* isolate) const {
         isolate->factory()
             ->NewRawOneByteString(result_length, AllocationType::kOld)
             .ToHandleChecked();
-    DisallowHeapAllocation no_gc;
-    uint8_t* dest = result->GetChars(no_gc) + result_length;
+    DisallowGarbageCollection no_gc;
+    uint8_t* dest =
+        result->GetChars(no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()) +
+        result_length;
     for (const AstConsString::Segment* current = &segment_; current != nullptr;
          current = current->next) {
       int length = current->string->length();
       dest -= length;
       CopyChars(dest, current->string->raw_data(), length);
     }
-    DCHECK_EQ(dest, result->GetChars(no_gc));
+    DCHECK_EQ(dest, result->GetChars(
+                        no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()));
     return result;
   }
 
@@ -208,8 +251,10 @@ Handle<String> AstConsString::AllocateFlat(LocalIsolate* isolate) const {
       isolate->factory()
           ->NewRawTwoByteString(result_length, AllocationType::kOld)
           .ToHandleChecked();
-  DisallowHeapAllocation no_gc;
-  uint16_t* dest = result->GetChars(no_gc) + result_length;
+  DisallowGarbageCollection no_gc;
+  uint16_t* dest =
+      result->GetChars(no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()) +
+      result_length;
   for (const AstConsString::Segment* current = &segment_; current != nullptr;
        current = current->next) {
     int length = current->string->length();
@@ -222,7 +267,8 @@ Handle<String> AstConsString::AllocateFlat(LocalIsolate* isolate) const {
                 length);
     }
   }
-  DCHECK_EQ(dest, result->GetChars(no_gc));
+  DCHECK_EQ(dest, result->GetChars(
+                      no_gc, SharedStringAccessGuardIfNeeded::NotNeeded()));
   return result;
 }
 template EXPORT_TEMPLATE_DEFINE(V8_EXPORT_PRIVATE)
@@ -292,7 +338,7 @@ const AstRawString* AstValueFactory::GetTwoByteStringInternal(
 
 const AstRawString* AstValueFactory::GetString(Handle<String> literal) {
   const AstRawString* result = nullptr;
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   String::FlatContent content = literal->GetFlatContent(no_gc);
   if (content.IsOneByte()) {
     result = GetOneByteStringInternal(content.ToOneByteVector());
@@ -358,7 +404,7 @@ const AstRawString* AstValueFactory::GetString(
         // Copy literal contents for later comparison.
         int length = literal_bytes.length();
         byte* new_literal_bytes = zone()->NewArray<byte>(length);
-        memcpy(new_literal_bytes, literal_bytes.begin(), length);
+        base::Memcpy(new_literal_bytes, literal_bytes.begin(), length);
         AstRawString* new_string = zone()->New<AstRawString>(
             is_one_byte, Vector<const byte>(new_literal_bytes, length),
             raw_hash_field);

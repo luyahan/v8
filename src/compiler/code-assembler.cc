@@ -8,6 +8,7 @@
 
 #include "src/base/bits.h"
 #include "src/codegen/code-factory.h"
+#include "src/codegen/code-stub-assembler.h"
 #include "src/codegen/interface-descriptors.h"
 #include "src/codegen/machine-type.h"
 #include "src/codegen/macro-assembler.h"
@@ -315,7 +316,8 @@ TNode<Float64T> CodeAssembler::Float64Constant(double value) {
   return UncheckedCast<Float64T>(jsgraph()->Float64Constant(value));
 }
 
-bool CodeAssembler::ToInt32Constant(Node* node, int32_t* out_value) {
+bool CodeAssembler::TryToInt32Constant(TNode<IntegralT> node,
+                                       int32_t* out_value) {
   {
     Int64Matcher m(node);
     if (m.HasResolvedValue() &&
@@ -337,16 +339,22 @@ bool CodeAssembler::ToInt32Constant(Node* node, int32_t* out_value) {
   return false;
 }
 
-bool CodeAssembler::ToInt64Constant(Node* node, int64_t* out_value) {
+bool CodeAssembler::TryToInt64Constant(TNode<IntegralT> node,
+                                       int64_t* out_value) {
   Int64Matcher m(node);
   if (m.HasResolvedValue()) *out_value = m.ResolvedValue();
   return m.HasResolvedValue();
 }
 
-bool CodeAssembler::ToSmiConstant(Node* node, Smi* out_value) {
+bool CodeAssembler::TryToSmiConstant(TNode<Smi> tnode, Smi* out_value) {
+  Node* node = tnode;
   if (node->opcode() == IrOpcode::kBitcastWordToTaggedSigned) {
     node = node->InputAt(0);
   }
+  return TryToSmiConstant(ReinterpretCast<IntPtrT>(tnode), out_value);
+}
+
+bool CodeAssembler::TryToSmiConstant(TNode<IntegralT> node, Smi* out_value) {
   IntPtrMatcher m(node);
   if (m.HasResolvedValue()) {
     intptr_t value = m.ResolvedValue();
@@ -358,11 +366,17 @@ bool CodeAssembler::ToSmiConstant(Node* node, Smi* out_value) {
   return false;
 }
 
-bool CodeAssembler::ToIntPtrConstant(Node* node, intptr_t* out_value) {
+bool CodeAssembler::TryToIntPtrConstant(TNode<Smi> tnode, intptr_t* out_value) {
+  Node* node = tnode;
   if (node->opcode() == IrOpcode::kBitcastWordToTaggedSigned ||
       node->opcode() == IrOpcode::kBitcastWordToTagged) {
     node = node->InputAt(0);
   }
+  return TryToIntPtrConstant(ReinterpretCast<IntPtrT>(tnode), out_value);
+}
+
+bool CodeAssembler::TryToIntPtrConstant(TNode<IntegralT> node,
+                                        intptr_t* out_value) {
   IntPtrMatcher m(node);
   if (m.HasResolvedValue()) *out_value = m.ResolvedValue();
   return m.HasResolvedValue();
@@ -577,13 +591,13 @@ TNode<Word32T> CodeAssembler::Word32Sar(SloppyTNode<Word32T> value, int shift) {
     return UncheckedCast<BoolT>(raw_assembler()->Name(left, right));      \
   }
 
-CODE_ASSEMBLER_COMPARE(IntPtrEqual, WordT, intptr_t, ToIntPtrConstant, ==)
-CODE_ASSEMBLER_COMPARE(WordEqual, WordT, intptr_t, ToIntPtrConstant, ==)
-CODE_ASSEMBLER_COMPARE(WordNotEqual, WordT, intptr_t, ToIntPtrConstant, !=)
-CODE_ASSEMBLER_COMPARE(Word32Equal, Word32T, int32_t, ToInt32Constant, ==)
-CODE_ASSEMBLER_COMPARE(Word32NotEqual, Word32T, int32_t, ToInt32Constant, !=)
-CODE_ASSEMBLER_COMPARE(Word64Equal, Word64T, int64_t, ToInt64Constant, ==)
-CODE_ASSEMBLER_COMPARE(Word64NotEqual, Word64T, int64_t, ToInt64Constant, !=)
+CODE_ASSEMBLER_COMPARE(IntPtrEqual, WordT, intptr_t, TryToIntPtrConstant, ==)
+CODE_ASSEMBLER_COMPARE(WordEqual, WordT, intptr_t, TryToIntPtrConstant, ==)
+CODE_ASSEMBLER_COMPARE(WordNotEqual, WordT, intptr_t, TryToIntPtrConstant, !=)
+CODE_ASSEMBLER_COMPARE(Word32Equal, Word32T, int32_t, TryToInt32Constant, ==)
+CODE_ASSEMBLER_COMPARE(Word32NotEqual, Word32T, int32_t, TryToInt32Constant, !=)
+CODE_ASSEMBLER_COMPARE(Word64Equal, Word64T, int64_t, TryToInt64Constant, ==)
+CODE_ASSEMBLER_COMPARE(Word64NotEqual, Word64T, int64_t, TryToInt64Constant, !=)
 #undef CODE_ASSEMBLER_COMPARE
 
 TNode<UintPtrT> CodeAssembler::ChangeUint32ToWord(TNode<Word32T> value) {
@@ -683,7 +697,7 @@ template TNode<AtomicInt64> CodeAssembler::AtomicLoad64<AtomicInt64>(
 template TNode<AtomicUint64> CodeAssembler::AtomicLoad64<AtomicUint64>(
     TNode<RawPtrT> base, TNode<WordT> offset);
 
-Node* CodeAssembler::LoadFromObject(MachineType type, TNode<HeapObject> object,
+Node* CodeAssembler::LoadFromObject(MachineType type, TNode<Object> object,
                                     TNode<IntPtrT> offset) {
   return raw_assembler()->LoadFromObject(type, object, offset);
 }
@@ -708,14 +722,14 @@ TNode<Object> CodeAssembler::LoadRoot(RootIndex root_index) {
       LoadFullTagged(isolate_root, IntPtrConstant(offset)));
 }
 
-Node* CodeAssembler::Store(Node* base, Node* value) {
-  return raw_assembler()->Store(MachineRepresentation::kTagged, base, value,
-                                kFullWriteBarrier);
+void CodeAssembler::Store(Node* base, Node* value) {
+  raw_assembler()->Store(MachineRepresentation::kTagged, base, value,
+                         kFullWriteBarrier);
 }
 
 void CodeAssembler::StoreToObject(MachineRepresentation rep,
-                                  TNode<HeapObject> object,
-                                  TNode<IntPtrT> offset, Node* value,
+                                  TNode<Object> object, TNode<IntPtrT> offset,
+                                  Node* value,
                                   StoreToObjectWriteBarrier write_barrier) {
   WriteBarrierKind write_barrier_kind;
   switch (write_barrier) {
@@ -763,56 +777,63 @@ void CodeAssembler::OptimizedStoreMap(TNode<HeapObject> object,
   raw_assembler()->OptimizedStoreMap(object, map);
 }
 
-Node* CodeAssembler::Store(Node* base, Node* offset, Node* value) {
-  return raw_assembler()->Store(MachineRepresentation::kTagged, base, offset,
-                                value, kFullWriteBarrier);
+void CodeAssembler::Store(Node* base, Node* offset, Node* value) {
+  raw_assembler()->Store(MachineRepresentation::kTagged, base, offset, value,
+                         kFullWriteBarrier);
 }
 
-Node* CodeAssembler::StoreEphemeronKey(Node* base, Node* offset, Node* value) {
-  return raw_assembler()->Store(MachineRepresentation::kTagged, base, offset,
-                                value, kEphemeronKeyWriteBarrier);
+void CodeAssembler::StoreEphemeronKey(Node* base, Node* offset, Node* value) {
+  raw_assembler()->Store(MachineRepresentation::kTagged, base, offset, value,
+                         kEphemeronKeyWriteBarrier);
 }
 
-Node* CodeAssembler::StoreNoWriteBarrier(MachineRepresentation rep, Node* base,
-                                         Node* value) {
-  return raw_assembler()->Store(
+void CodeAssembler::StoreNoWriteBarrier(MachineRepresentation rep, Node* base,
+                                        Node* value) {
+  raw_assembler()->Store(
       rep, base, value,
       CanBeTaggedPointer(rep) ? kAssertNoWriteBarrier : kNoWriteBarrier);
 }
 
-Node* CodeAssembler::StoreNoWriteBarrier(MachineRepresentation rep, Node* base,
-                                         Node* offset, Node* value) {
-  return raw_assembler()->Store(
+void CodeAssembler::StoreNoWriteBarrier(MachineRepresentation rep, Node* base,
+                                        Node* offset, Node* value) {
+  raw_assembler()->Store(
       rep, base, offset, value,
       CanBeTaggedPointer(rep) ? kAssertNoWriteBarrier : kNoWriteBarrier);
 }
 
-Node* CodeAssembler::UnsafeStoreNoWriteBarrier(MachineRepresentation rep,
-                                               Node* base, Node* value) {
-  return raw_assembler()->Store(rep, base, value, kNoWriteBarrier);
+void CodeAssembler::UnsafeStoreNoWriteBarrier(MachineRepresentation rep,
+                                              Node* base, Node* value) {
+  raw_assembler()->Store(rep, base, value, kNoWriteBarrier);
 }
 
-Node* CodeAssembler::UnsafeStoreNoWriteBarrier(MachineRepresentation rep,
-                                               Node* base, Node* offset,
-                                               Node* value) {
-  return raw_assembler()->Store(rep, base, offset, value, kNoWriteBarrier);
+void CodeAssembler::UnsafeStoreNoWriteBarrier(MachineRepresentation rep,
+                                              Node* base, Node* offset,
+                                              Node* value) {
+  raw_assembler()->Store(rep, base, offset, value, kNoWriteBarrier);
 }
 
-Node* CodeAssembler::StoreFullTaggedNoWriteBarrier(Node* base,
-                                                   Node* tagged_value) {
-  return StoreNoWriteBarrier(MachineType::PointerRepresentation(), base,
-                             BitcastTaggedToWord(tagged_value));
+void CodeAssembler::StoreFullTaggedNoWriteBarrier(TNode<RawPtrT> base,
+                                                  TNode<Object> tagged_value) {
+  StoreNoWriteBarrier(MachineType::PointerRepresentation(), base,
+                      BitcastTaggedToWord(tagged_value));
 }
 
-Node* CodeAssembler::StoreFullTaggedNoWriteBarrier(Node* base, Node* offset,
-                                                   Node* tagged_value) {
-  return StoreNoWriteBarrier(MachineType::PointerRepresentation(), base, offset,
-                             BitcastTaggedToWord(tagged_value));
+void CodeAssembler::StoreFullTaggedNoWriteBarrier(TNode<RawPtrT> base,
+                                                  TNode<IntPtrT> offset,
+                                                  TNode<Object> tagged_value) {
+  StoreNoWriteBarrier(MachineType::PointerRepresentation(), base, offset,
+                      BitcastTaggedToWord(tagged_value));
 }
 
-Node* CodeAssembler::AtomicStore(MachineRepresentation rep, Node* base,
-                                 Node* offset, Node* value, Node* value_high) {
-  return raw_assembler()->AtomicStore(rep, base, offset, value, value_high);
+void CodeAssembler::AtomicStore(MachineRepresentation rep, TNode<RawPtrT> base,
+                                TNode<WordT> offset, TNode<Word32T> value) {
+  raw_assembler()->AtomicStore(rep, base, offset, value);
+}
+
+void CodeAssembler::AtomicStore64(TNode<RawPtrT> base, TNode<WordT> offset,
+                                  TNode<UintPtrT> value,
+                                  TNode<UintPtrT> value_high) {
+  raw_assembler()->AtomicStore64(base, offset, value, value_high);
 }
 
 #define ATOMIC_FUNCTION(name)                                                 \
@@ -874,13 +895,12 @@ CodeAssembler::AtomicCompareExchange64<AtomicUint64>(
     TNode<UintPtrT> new_value, TNode<UintPtrT> old_value_high,
     TNode<UintPtrT> new_value_high);
 
-Node* CodeAssembler::StoreRoot(RootIndex root_index, Node* value) {
+void CodeAssembler::StoreRoot(RootIndex root_index, TNode<Object> value) {
   DCHECK(!RootsTable::IsImmortalImmovable(root_index));
   TNode<ExternalReference> isolate_root =
       ExternalConstant(ExternalReference::isolate_root(isolate()));
   int offset = IsolateData::root_slot_offset(root_index);
-  return StoreFullTaggedNoWriteBarrier(isolate_root, IntPtrConstant(offset),
-                                       value);
+  StoreFullTaggedNoWriteBarrier(isolate_root, IntPtrConstant(offset), value);
 }
 
 Node* CodeAssembler::Projection(int index, Node* value) {
@@ -1197,7 +1217,7 @@ void CodeAssembler::GotoIfNot(TNode<IntegralT> condition, Label* false_label) {
 void CodeAssembler::Branch(TNode<IntegralT> condition, Label* true_label,
                            Label* false_label) {
   int32_t constant;
-  if (ToInt32Constant(condition, &constant)) {
+  if (TryToInt32Constant(condition, &constant)) {
     if ((true_label->is_used() || true_label->is_bound()) &&
         (false_label->is_used() || false_label->is_bound())) {
       return Goto(constant ? true_label : false_label);
@@ -1213,7 +1233,7 @@ void CodeAssembler::Branch(TNode<BoolT> condition,
                            const std::function<void()>& true_body,
                            const std::function<void()>& false_body) {
   int32_t constant;
-  if (ToInt32Constant(condition, &constant)) {
+  if (TryToInt32Constant(condition, &constant)) {
     return constant ? true_body() : false_body();
   }
 
@@ -1230,7 +1250,7 @@ void CodeAssembler::Branch(TNode<BoolT> condition,
 void CodeAssembler::Branch(TNode<BoolT> condition, Label* true_label,
                            const std::function<void()>& false_body) {
   int32_t constant;
-  if (ToInt32Constant(condition, &constant)) {
+  if (TryToInt32Constant(condition, &constant)) {
     return constant ? Goto(true_label) : false_body();
   }
 
@@ -1244,7 +1264,7 @@ void CodeAssembler::Branch(TNode<BoolT> condition,
                            const std::function<void()>& true_body,
                            Label* false_label) {
   int32_t constant;
-  if (ToInt32Constant(condition, &constant)) {
+  if (TryToInt32Constant(condition, &constant)) {
     return constant ? true_body() : Goto(false_label);
   }
 

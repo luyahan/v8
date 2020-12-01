@@ -33,6 +33,7 @@
 #include "src/wasm/wasm-external-refs.h"
 
 #ifdef V8_INTL_SUPPORT
+#include "src/base/platform/wrappers.h"
 #include "src/objects/intl-objects.h"
 #endif  // V8_INTL_SUPPORT
 
@@ -612,7 +613,7 @@ void* libc_memchr(void* string, int character, size_t search_length) {
 FUNCTION_REFERENCE(libc_memchr_function, libc_memchr)
 
 void* libc_memcpy(void* dest, const void* src, size_t n) {
-  return memcpy(dest, src, n);
+  return base::Memcpy(dest, src, n);
 }
 
 FUNCTION_REFERENCE(libc_memcpy_function, libc_memcpy)
@@ -664,7 +665,7 @@ ExternalReference ExternalReference::search_string_raw_two_two() {
 FUNCTION_REFERENCE(orderedhashmap_gethash_raw, OrderedHashMap::GetHash)
 
 Address GetOrCreateHash(Isolate* isolate, Address raw_key) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   return Object(raw_key).GetOrCreateHash(isolate).ptr();
 }
 
@@ -679,7 +680,7 @@ FUNCTION_REFERENCE(jsreceiver_create_identity_hash,
                    JSReceiverCreateIdentityHash)
 
 static uint32_t ComputeSeededIntegerHash(Isolate* isolate, int32_t key) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   return ComputeSeededHash(static_cast<uint32_t>(key), HashSeed(isolate));
 }
 
@@ -825,6 +826,12 @@ ExternalReference ExternalReference::fast_c_call_caller_pc_address(
     Isolate* isolate) {
   return ExternalReference(
       isolate->isolate_data()->fast_c_call_caller_pc_address());
+}
+
+ExternalReference ExternalReference::fast_api_call_target_address(
+    Isolate* isolate) {
+  return ExternalReference(
+      isolate->isolate_data()->fast_api_call_target_address());
 }
 
 ExternalReference ExternalReference::stack_is_iterable_address(

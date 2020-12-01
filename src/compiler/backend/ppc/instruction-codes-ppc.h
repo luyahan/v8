@@ -214,6 +214,8 @@ namespace compiler {
   V(PPC_F64x2Floor)                  \
   V(PPC_F64x2Trunc)                  \
   V(PPC_F64x2NearestInt)             \
+  V(PPC_F64x2Pmin)                   \
+  V(PPC_F64x2Pmax)                   \
   V(PPC_F32x4Splat)                  \
   V(PPC_F32x4ExtractLane)            \
   V(PPC_F32x4ReplaceLane)            \
@@ -239,6 +241,8 @@ namespace compiler {
   V(PPC_F32x4Floor)                  \
   V(PPC_F32x4Trunc)                  \
   V(PPC_F32x4NearestInt)             \
+  V(PPC_F32x4Pmin)                   \
+  V(PPC_F32x4Pmax)                   \
   V(PPC_I64x2Splat)                  \
   V(PPC_I64x2ExtractLane)            \
   V(PPC_I64x2ReplaceLane)            \
@@ -369,10 +373,24 @@ namespace compiler {
   V(PPC_S128And)                     \
   V(PPC_S128Or)                      \
   V(PPC_S128Xor)                     \
+  V(PPC_S128Const)                   \
   V(PPC_S128Zero)                    \
+  V(PPC_S128AllOnes)                 \
   V(PPC_S128Not)                     \
   V(PPC_S128Select)                  \
   V(PPC_S128AndNot)                  \
+  V(PPC_S128Load8Splat)              \
+  V(PPC_S128Load16Splat)             \
+  V(PPC_S128Load32Splat)             \
+  V(PPC_S128Load64Splat)             \
+  V(PPC_S128Load8x8S)                \
+  V(PPC_S128Load8x8U)                \
+  V(PPC_S128Load16x4S)               \
+  V(PPC_S128Load16x4U)               \
+  V(PPC_S128Load32x2S)               \
+  V(PPC_S128Load32x2U)               \
+  V(PPC_S128Load32Zero)              \
+  V(PPC_S128Load64Zero)              \
   V(PPC_StoreCompressTagged)         \
   V(PPC_LoadDecompressTaggedSigned)  \
   V(PPC_LoadDecompressTaggedPointer) \

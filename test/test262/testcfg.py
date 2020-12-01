@@ -57,11 +57,7 @@ FEATURE_FLAGS = {
   'regexp-match-indices': '--harmony-regexp-match-indices',
   # https://github.com/tc39/test262/pull/2395
   'regexp-named-groups': '--harmony-regexp-match-indices',
-  'class-methods-private': '--harmony-private-methods',
-  'class-static-methods-private': '--harmony-private-methods',
-  'AggregateError': '--harmony-promise-any',
   'logical-assignment-operators': '--harmony-logical-assignment',
-  'Promise.any': '--harmony-promise-any',
   'Atomics.waitAsync': '--harmony-atomics-waitasync',
 }
 

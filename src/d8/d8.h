@@ -16,6 +16,7 @@
 
 #include "src/base/once.h"
 #include "src/base/platform/time.h"
+#include "src/base/platform/wrappers.h"
 #include "src/d8/async-hooks-wrapper.h"
 #include "src/strings/string-hasher.h"
 #include "src/utils/allocation.h"
@@ -137,7 +138,7 @@ class SerializationData {
 
  private:
   struct DataDeleter {
-    void operator()(uint8_t* p) const { free(p); }
+    void operator()(uint8_t* p) const { base::Free(p); }
   };
 
   std::unique_ptr<uint8_t, DataDeleter> data_;
@@ -241,7 +242,7 @@ class PerIsolateData {
     return reinterpret_cast<PerIsolateData*>(isolate->GetData(0));
   }
 
-  class RealmScope {
+  class V8_NODISCARD RealmScope {
    public:
     explicit RealmScope(PerIsolateData* data);
     ~RealmScope();
@@ -342,6 +343,7 @@ class ShellOptions {
   DisallowReassignment<bool> omit_quit = {"omit-quit", false};
   DisallowReassignment<bool> wait_for_background_tasks = {
       "wait-for-background-tasks", true};
+  DisallowReassignment<bool> simulate_errors = {"simulate-errors", false};
   DisallowReassignment<bool> stress_opt = {"stress-opt", false};
   DisallowReassignment<int> stress_runs = {"stress-runs", 1};
   DisallowReassignment<bool> stress_snapshot = {"stress-snapshot", false};
@@ -611,10 +613,17 @@ class Shell : public i::AllStatic {
   static MaybeLocal<Module> FetchModuleTree(v8::Local<v8::Module> origin_module,
                                             v8::Local<v8::Context> context,
                                             const std::string& file_name);
+
+  template <class T>
+  static MaybeLocal<T> CompileString(Isolate* isolate, Local<Context> context,
+                                     Local<String> source,
+                                     const ScriptOrigin& origin);
+
   static ScriptCompiler::CachedData* LookupCodeCache(Isolate* isolate,
                                                      Local<Value> name);
   static void StoreInCodeCache(Isolate* isolate, Local<Value> name,
                                const ScriptCompiler::CachedData* data);
+  static void SimulateErrors();
   // We may have multiple isolates running concurrently, so the access to
   // the isolate_status_ needs to be concurrency-safe.
   static base::LazyMutex isolate_status_lock_;
