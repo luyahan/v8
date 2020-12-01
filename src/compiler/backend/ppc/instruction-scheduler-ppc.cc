@@ -137,6 +137,8 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_F64x2Floor:
     case kPPC_F64x2Trunc:
     case kPPC_F64x2NearestInt:
+    case kPPC_F64x2Pmin:
+    case kPPC_F64x2Pmax:
     case kPPC_F32x4Splat:
     case kPPC_F32x4ExtractLane:
     case kPPC_F32x4ReplaceLane:
@@ -164,6 +166,8 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_F32x4Floor:
     case kPPC_F32x4Trunc:
     case kPPC_F32x4NearestInt:
+    case kPPC_F32x4Pmin:
+    case kPPC_F32x4Pmax:
     case kPPC_I64x2Splat:
     case kPPC_I64x2ExtractLane:
     case kPPC_I64x2ReplaceLane:
@@ -292,7 +296,9 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_S128And:
     case kPPC_S128Or:
     case kPPC_S128Xor:
+    case kPPC_S128Const:
     case kPPC_S128Zero:
+    case kPPC_S128AllOnes:
     case kPPC_S128Not:
     case kPPC_S128Select:
     case kPPC_S128AndNot:
@@ -316,6 +322,18 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_LoadDecompressTaggedSigned:
     case kPPC_LoadDecompressTaggedPointer:
     case kPPC_LoadDecompressAnyTagged:
+    case kPPC_S128Load8Splat:
+    case kPPC_S128Load16Splat:
+    case kPPC_S128Load32Splat:
+    case kPPC_S128Load64Splat:
+    case kPPC_S128Load8x8S:
+    case kPPC_S128Load8x8U:
+    case kPPC_S128Load16x4S:
+    case kPPC_S128Load16x4U:
+    case kPPC_S128Load32x2S:
+    case kPPC_S128Load32x2U:
+    case kPPC_S128Load32Zero:
+    case kPPC_S128Load64Zero:
       return kIsLoadOperation;
 
     case kPPC_StoreWord8:

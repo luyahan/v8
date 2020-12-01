@@ -162,6 +162,13 @@ struct WasmInstanceCacheNodes {
 // the wasm decoder from the internal details of TurboFan.
 class WasmGraphBuilder {
  public:
+  struct ObjectReferenceKnowledge {
+    bool object_can_be_null;
+    bool object_must_be_data_ref;
+    bool object_can_be_i31;
+    bool rtt_is_i31;
+    uint8_t rtt_depth;
+  };
   enum EnforceBoundsCheck : bool {  // --
     kNeedsBoundsCheck = true,
     kCanOmitBoundsCheck = false
@@ -174,14 +181,6 @@ class WasmGraphBuilder {
     kWithNullCheck = true,
     kWithoutNullCheck = false
   };
-  enum CheckForI31 : bool {  // --
-    kWithI31Check = true,
-    kNoI31Check = false
-  };
-  enum RttIsI31 : bool {  // --
-    kRttIsI31 = true,
-    kRttIsNotI31 = false
-  };
 
   V8_EXPORT_PRIVATE WasmGraphBuilder(
       wasm::CompilationEnv* env, Zone* zone, MachineGraph* mcgraph,
@@ -193,7 +192,6 @@ class WasmGraphBuilder {
   //-----------------------------------------------------------------------
   // Operations independent of {control} or {effect}.
   //-----------------------------------------------------------------------
-  Node* Error();
   Node* Start(unsigned params);
   Node* Param(unsigned index);
   Node* Loop(Node* entry);
@@ -240,7 +238,6 @@ class WasmGraphBuilder {
   // Operations that read and/or write {control} and {effect}.
   //-----------------------------------------------------------------------
   Node* BranchNoHint(Node* cond, Node** true_node, Node** false_node);
-  Node* BranchExpectTrue(Node* cond, Node** true_node, Node** false_node);
   Node* BranchExpectFalse(Node* cond, Node** true_node, Node** false_node);
 
   Node* TrapIfTrue(wasm::TrapReason reason, Node* cond,
@@ -304,6 +301,8 @@ class WasmGraphBuilder {
   Node* CurrentMemoryPages();
   Node* TraceMemoryOperation(bool is_store, MachineRepresentation, Node* index,
                              uintptr_t offset, wasm::WasmCodePosition);
+  Node* Prefetch(Node* index, uint64_t offset, uint32_t alignment,
+                 bool temporal);
   Node* LoadMem(wasm::ValueType type, MachineType memtype, Node* index,
                 uint64_t offset, uint32_t alignment,
                 wasm::WasmCodePosition position);
@@ -317,12 +316,12 @@ class WasmGraphBuilder {
                       wasm::LoadTransformationKind transform, Node* index,
                       uint64_t offset, uint32_t alignment,
                       wasm::WasmCodePosition position);
-  Node* LoadLane(MachineType memtype, Node* value, Node* index, uint32_t offset,
+  Node* LoadLane(MachineType memtype, Node* value, Node* index, uint64_t offset,
                  uint8_t laneidx, wasm::WasmCodePosition position);
   Node* StoreMem(MachineRepresentation mem_rep, Node* index, uint64_t offset,
                  uint32_t alignment, Node* val, wasm::WasmCodePosition position,
                  wasm::ValueType type);
-  Node* StoreLane(MachineRepresentation mem_rep, Node* index, uint32_t offset,
+  Node* StoreLane(MachineRepresentation mem_rep, Node* index, uint64_t offset,
                   uint32_t alignment, Node* val, uint8_t laneidx,
                   wasm::WasmCodePosition position, wasm::ValueType type);
   static void PrintDebugName(Node* node);
@@ -417,7 +416,8 @@ class WasmGraphBuilder {
                   uint32_t field_index, Node* value, CheckForNull null_check,
                   wasm::WasmCodePosition position);
   Node* ArrayNewWithRtt(uint32_t array_index, const wasm::ArrayType* type,
-                        Node* length, Node* initial_value, Node* rtt);
+                        Node* length, Node* initial_value, Node* rtt,
+                        wasm::WasmCodePosition position);
   void BoundsCheck(Node* array, Node* index, wasm::WasmCodePosition position);
   Node* ArrayGet(Node* array_object, const wasm::ArrayType* type, Node* index,
                  CheckForNull null_check, bool is_signed,
@@ -431,13 +431,10 @@ class WasmGraphBuilder {
   Node* I31GetU(Node* input);
   Node* RttCanon(wasm::HeapType type);
   Node* RttSub(wasm::HeapType type, Node* parent_rtt);
-  Node* RefTest(Node* object, Node* rtt, CheckForNull null_check,
-                CheckForI31 i31_check, RttIsI31 rtt_is_i31, uint8_t depth);
-  Node* RefCast(Node* object, Node* rtt, CheckForNull null_check,
-                CheckForI31 i31_check, RttIsI31 rtt_is_i31, uint8_t depth,
+  Node* RefTest(Node* object, Node* rtt, ObjectReferenceKnowledge config);
+  Node* RefCast(Node* object, Node* rtt, ObjectReferenceKnowledge config,
                 wasm::WasmCodePosition position);
-  Node* BrOnCast(Node* object, Node* rtt, CheckForNull null_check,
-                 CheckForI31 i31_check, RttIsI31 rtt_is_i31, uint8_t depth,
+  Node* BrOnCast(Node* object, Node* rtt, ObjectReferenceKnowledge config,
                  Node** match_control, Node** match_effect,
                  Node** no_match_control, Node** no_match_effect);
 
@@ -467,16 +464,6 @@ class WasmGraphBuilder {
   // BoundsCheckMem receives a uint32 {index} node and returns a ptrsize index.
   Node* BoundsCheckMem(uint8_t access_size, Node* index, uint64_t offset,
                        wasm::WasmCodePosition, EnforceBoundsCheck);
-  // Check that the range [start, start + size) is in the range [0, max).
-  // Also updates *size with the valid range. Returns true if the range is
-  // partially out-of-bounds, traps if it is completely out-of-bounds.
-  Node* BoundsCheckRange(Node* start, Node** size, Node* max,
-                         wasm::WasmCodePosition);
-  // BoundsCheckMemRange receives a uint32 {start} and {size}, and checks if it
-  // is in bounds. Also updates *size with the valid range, and converts *start
-  // to a pointer into memory at that index. Returns true if the range is
-  // partially out-of-bounds, traps if it is completely out-of-bounds.
-  Node* BoundsCheckMemRange(Node** start, Node** size, wasm::WasmCodePosition);
 
   Node* CheckBoundsAndAlignment(int8_t access_size, Node* index,
                                 uint64_t offset, wasm::WasmCodePosition);
@@ -620,9 +607,7 @@ class WasmGraphBuilder {
   Node* BuildMultiReturnFixedArrayFromIterable(const wasm::FunctionSig* sig,
                                                Node* iterable, Node* context);
 
-  Node* BuildLoadFunctionDataFromJSFunction(Node* closure);
   Node* BuildLoadJumpTableOffsetFromExportedFunctionData(Node* function_data);
-  Node* BuildLoadFunctionIndexFromExportedFunctionData(Node* function_data);
 
   //-----------------------------------------------------------------------
   // Operations involving the CEntry, a dependency we want to remove

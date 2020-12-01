@@ -362,14 +362,14 @@ class WasmGraphBuildingInterface {
       if (ret_count > 0) {
         GetNodes(values.begin(), decoder->stack_value(ret_count), ret_count);
       }
+      if (FLAG_trace_wasm) {
+        BUILD(TraceFunctionExit, VectorOf(values), decoder->position());
+      }
       BUILD(Return, VectorOf(values));
     } else {
-      Br(decoder, decoder->control_at(depth));
+      Control* target = decoder->control_at(depth);
+      MergeValuesInto(decoder, target, target->br_merge());
     }
-  }
-
-  void Br(FullDecoder* decoder, Control* target) {
-    MergeValuesInto(decoder, target, target->br_merge());
   }
 
   void BrIf(FullDecoder* decoder, const Value& cond, uint32_t depth) {
@@ -417,6 +417,12 @@ class WasmGraphBuildingInterface {
       MergeValuesInto(decoder, if_block, &if_block->end_merge);
     }
     SetEnv(if_block->false_env);
+  }
+
+  void Prefetch(FullDecoder* decoder,
+                const MemoryAccessImmediate<validate>& imm, const Value& index,
+                bool temporal) {
+    BUILD(Prefetch, index.node, imm.offset, imm.alignment, temporal);
   }
 
   void LoadMem(FullDecoder* decoder, LoadType type,
@@ -734,16 +740,18 @@ class WasmGraphBuildingInterface {
                        const ArrayIndexImmediate<validate>& imm,
                        const Value& length, const Value& initial_value,
                        const Value& rtt, Value* result) {
-    result->node = BUILD(ArrayNewWithRtt, imm.index, imm.array_type,
-                         length.node, initial_value.node, rtt.node);
+    result->node =
+        BUILD(ArrayNewWithRtt, imm.index, imm.array_type, length.node,
+              initial_value.node, rtt.node, decoder->position());
   }
 
   void ArrayNewDefault(FullDecoder* decoder,
                        const ArrayIndexImmediate<validate>& imm,
                        const Value& length, const Value& rtt, Value* result) {
     TFNode* initial_value = DefaultValue(imm.array_type->element_type());
-    result->node = BUILD(ArrayNewWithRtt, imm.index, imm.array_type,
-                         length.node, initial_value, rtt.node);
+    result->node =
+        BUILD(ArrayNewWithRtt, imm.index, imm.array_type, length.node,
+              initial_value, rtt.node, decoder->position());
   }
 
   void ArrayGet(FullDecoder* decoder, const Value& array_obj,
@@ -792,65 +800,53 @@ class WasmGraphBuildingInterface {
     result->node = BUILD(RttSub, imm.type, parent.node);
   }
 
+  using StaticKnowledge = compiler::WasmGraphBuilder::ObjectReferenceKnowledge;
+
+  StaticKnowledge ComputeStaticKnowledge(ValueType object_type,
+                                         ValueType rtt_type,
+                                         const WasmModule* module) {
+    StaticKnowledge result;
+    result.object_can_be_null = object_type.is_nullable();
+    result.object_must_be_data_ref = false;
+    DCHECK(object_type.is_object_reference_type());  // Checked by validation.
+    if (object_type.has_index()) {
+      uint32_t reftype = object_type.ref_index();
+      // TODO(7748): When we implement dataref (=any struct or array), add it
+      // to this list.
+      if (module->has_struct(reftype) || module->has_array(reftype)) {
+        result.object_must_be_data_ref = true;
+      }
+    }
+    result.object_can_be_i31 = IsSubtypeOf(kWasmI31Ref, object_type, module);
+    result.rtt_is_i31 = rtt_type.heap_representation() == HeapType::kI31;
+    result.rtt_depth = rtt_type.depth();
+    return result;
+  }
+
   void RefTest(FullDecoder* decoder, const Value& object, const Value& rtt,
                Value* result) {
-    using CheckForI31 = compiler::WasmGraphBuilder::CheckForI31;
-    using RttIsI31 = compiler::WasmGraphBuilder::RttIsI31;
-    CheckForNull null_check = object.type.is_nullable()
-                                  ? CheckForNull::kWithNullCheck
-                                  : CheckForNull::kWithoutNullCheck;
-    CheckForI31 i31_check =
-        IsSubtypeOf(kWasmI31Ref, object.type, decoder->module_)
-            ? CheckForI31::kWithI31Check
-            : CheckForI31::kNoI31Check;
-    RttIsI31 rtt_is_i31 = rtt.type.heap_representation() == HeapType::kI31
-                              ? RttIsI31::kRttIsI31
-                              : RttIsI31::kRttIsNotI31;
-    uint8_t depth = rtt.type.depth();
-    result->node = BUILD(RefTest, object.node, rtt.node, null_check, i31_check,
-                         rtt_is_i31, depth);
+    StaticKnowledge config =
+        ComputeStaticKnowledge(object.type, rtt.type, decoder->module_);
+    result->node = BUILD(RefTest, object.node, rtt.node, config);
   }
 
   void RefCast(FullDecoder* decoder, const Value& object, const Value& rtt,
                Value* result) {
-    using CheckForI31 = compiler::WasmGraphBuilder::CheckForI31;
-    using RttIsI31 = compiler::WasmGraphBuilder::RttIsI31;
-    CheckForNull null_check = object.type.is_nullable()
-                                  ? CheckForNull::kWithNullCheck
-                                  : CheckForNull::kWithoutNullCheck;
-    CheckForI31 i31_check =
-        IsSubtypeOf(kWasmI31Ref, object.type, decoder->module_)
-            ? CheckForI31::kWithI31Check
-            : CheckForI31::kNoI31Check;
-    RttIsI31 rtt_is_i31 = rtt.type.heap_representation() == HeapType::kI31
-                              ? RttIsI31::kRttIsI31
-                              : RttIsI31::kRttIsNotI31;
-    uint8_t depth = rtt.type.depth();
-    result->node = BUILD(RefCast, object.node, rtt.node, null_check, i31_check,
-                         rtt_is_i31, depth, decoder->position());
+    StaticKnowledge config =
+        ComputeStaticKnowledge(object.type, rtt.type, decoder->module_);
+    result->node =
+        BUILD(RefCast, object.node, rtt.node, config, decoder->position());
   }
 
   void BrOnCast(FullDecoder* decoder, const Value& object, const Value& rtt,
                 Value* value_on_branch, uint32_t br_depth) {
-    using CheckForI31 = compiler::WasmGraphBuilder::CheckForI31;
-    using RttIsI31 = compiler::WasmGraphBuilder::RttIsI31;
-    CheckForNull null_check = object.type.is_nullable()
-                                  ? CheckForNull::kWithNullCheck
-                                  : CheckForNull::kWithoutNullCheck;
-    CheckForI31 i31_check =
-        IsSubtypeOf(kWasmI31Ref, object.type, decoder->module_)
-            ? CheckForI31::kWithI31Check
-            : CheckForI31::kNoI31Check;
-    RttIsI31 rtt_is_i31 = rtt.type.heap_representation() == HeapType::kI31
-                              ? RttIsI31::kRttIsI31
-                              : RttIsI31::kRttIsNotI31;
-    uint8_t rtt_depth = rtt.type.depth();
+    StaticKnowledge config =
+        ComputeStaticKnowledge(object.type, rtt.type, decoder->module_);
     SsaEnv* match_env = Split(decoder->zone(), ssa_env_);
     SsaEnv* no_match_env = Steal(decoder->zone(), ssa_env_);
     no_match_env->SetNotMerged();
-    BUILD(BrOnCast, object.node, rtt.node, null_check, i31_check, rtt_is_i31,
-          rtt_depth, &match_env->control, &match_env->effect,
-          &no_match_env->control, &no_match_env->effect);
+    BUILD(BrOnCast, object.node, rtt.node, config, &match_env->control,
+          &match_env->effect, &no_match_env->control, &no_match_env->effect);
     builder_->SetControl(no_match_env->control);
     SetEnv(match_env);
     value_on_branch->node = object.node;
@@ -1084,9 +1080,8 @@ class WasmGraphBuildingInterface {
     TFNode* effect_inputs[] = {effect(), control()};
     builder_->SetEffect(builder_->EffectPhi(1, effect_inputs));
     builder_->TerminateLoop(effect(), control());
-    // The '+ 1' here is to be able to set the instance cache as assigned.
     BitVector* assigned = WasmDecoder<validate>::AnalyzeLoopAssignment(
-        decoder, decoder->pc(), decoder->num_locals() + 1, decoder->zone());
+        decoder, decoder->pc(), decoder->num_locals(), decoder->zone());
     if (decoder->failed()) return;
     DCHECK_NOT_NULL(assigned);
 

@@ -10,7 +10,6 @@ gclient_gn_args = [
   # Remove when migration is complete.
   'checkout_fuchsia_for_arm64_host',
   'checkout_google_benchmark',
-  'mac_xcode_version',
 ]
 
 vars = {
@@ -47,13 +46,11 @@ vars = {
 
   'checkout_google_benchmark' : False,
 
-  'mac_xcode_version': 'default',
-
   # GN CIPD package version.
   'gn_version': 'git_revision:53d92014bf94c3893886470a1c7c1289f8818db0',
 
   # luci-go CIPD package version.
-  'luci_go': 'git_revision:1a022d3a4c50be4207ee93451255d71896416596',
+  'luci_go': 'git_revision:67aba6e3373bb0b9e3ef9871362045736cd29b6e',
 
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling android_sdk_build-tools_version
@@ -91,11 +88,11 @@ vars = {
 
 deps = {
   'build':
-    Var('chromium_url') + '/chromium/src/build.git' + '@' + '1a0a9f8c62d8fcc12f6e09d000a84d667fde7826',
+    Var('chromium_url') + '/chromium/src/build.git' + '@' + '425e151f0678a0c9262960e7bbc07b1e7c1dd37a',
   'third_party/depot_tools':
-    Var('chromium_url') + '/chromium/tools/depot_tools.git' + '@' + 'b4f4226d153e993888f6e7429dcc9aca480e680e',
+    Var('chromium_url') + '/chromium/tools/depot_tools.git' + '@' + 'dc7b108da629de39f923d510fc76ea2f58efa521',
   'third_party/icu':
-    Var('chromium_url') + '/chromium/deps/icu.git' + '@' + 'c2a4cae149aae7fd30c4cbe3cf1b30df03b386f1',
+    Var('chromium_url') + '/chromium/deps/icu.git' + '@' + '6a33b647c0647c3eb97eae5432153ef2dfca7baa',
   'third_party/instrumented_libraries':
     Var('chromium_url') + '/chromium/src/third_party/instrumented_libraries.git' + '@' + '6ba978ccb754d270b6cd12da58c8269b617e4f6e',
   'buildtools':
@@ -187,7 +184,7 @@ deps = {
       'dep_type': 'cipd',
   },
   'third_party/catapult': {
-    'url': Var('chromium_url') + '/catapult.git' + '@' + '434681c2378b686117c2b003a58c54d78f22185f',
+    'url': Var('chromium_url') + '/catapult.git' + '@' + '759827265102502cc7f814572675b9685c351908',
     'condition': 'checkout_android',
   },
   'third_party/colorama/src': {
@@ -215,7 +212,7 @@ deps = {
   'test/mozilla/data':
     Var('chromium_url') + '/v8/deps/third_party/mozilla-tests.git' + '@' + 'f6c578a10ea707b1a8ab0b88943fe5115ce2b9be',
   'test/test262/data':
-    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '0e7319c015fe935594f8bcafaedb0c94f7fec1df',
+    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '36d2d2d348d83e9d6554af59a672fbcd9413914b',
   'test/test262/harness':
     Var('chromium_url') + '/external/github.com/test262-utils/test262-harness-py.git' + '@' + '4555345a943d0c99a9461182705543fb171dda4b',
   'third_party/qemu-linux-x64': {
@@ -242,7 +239,7 @@ deps = {
       'packages': [
           {
               'package': 'fuchsia/third_party/aemu/linux-amd64',
-              'version': 'DVv5pUl-M5J693D1Gl5WWXRACYvP3V3wzNASbl_CU4wC'
+              'version': 'xSLGBy9YVgE3OzSwrnR3yqDwyZerQuy2QBEFfV1Lc2IC'
           },
       ],
       'condition': 'host_os == "linux" and checkout_fuchsia',
@@ -259,7 +256,7 @@ deps = {
       'dep_type': 'cipd',
   },
   'tools/clang':
-    Var('chromium_url') + '/chromium/src/tools/clang.git' + '@' + 'a37c0858a645506c8e9d3bebab1ed5a5b1f9df61',
+    Var('chromium_url') + '/chromium/src/tools/clang.git' + '@' + '20f5376c2904902439dbd91839c936848aff4226',
   'tools/luci-go': {
       'packages': [
         {
@@ -293,7 +290,7 @@ deps = {
   'third_party/protobuf':
     Var('chromium_url') + '/external/github.com/google/protobuf'+ '@' + 'b68a347f56137b4b1a746e8c7438495a6ac1bd91',
   'third_party/zlib':
-    Var('chromium_url') + '/chromium/src/third_party/zlib.git'+ '@' + 'e84c9a3fd75fdc39055b7ae27d6ec508e50bd39e',
+    Var('chromium_url') + '/chromium/src/third_party/zlib.git'+ '@' + '9893e506b3a7ea4ec68e1fcd9a374e849945f405',
   'third_party/jsoncpp/source':
     Var('chromium_url') + '/external/github.com/open-source-parsers/jsoncpp.git'+ '@' + '9059f5cad030ba11d37818847443a53918c327b1',
   'third_party/ittapi': {
@@ -490,8 +487,7 @@ hooks = [
     'name': 'mac_toolchain',
     'pattern': '.',
     'condition': 'checkout_mac',
-    'action': ['python', 'build/mac_toolchain.py',
-               '--xcode-version', Var('mac_xcode_version')],
+    'action': ['python', 'build/mac_toolchain.py'],
   },
   # Pull binutils for linux, enabled debug fission for faster linking /
   # debugging when used with clang on Ubuntu Precise.

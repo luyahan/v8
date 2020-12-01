@@ -6,6 +6,7 @@
 
 #include "src/base/functional.h"
 #include "src/base/platform/platform.h"
+#include "src/base/platform/wrappers.h"
 #include "src/flags/flags.h"
 #include "src/init/v8.h"
 #include "src/logging/counters.h"
@@ -310,7 +311,7 @@ class ModuleDecoderImpl : public Decoder {
     size_t rv = 0;
     if (FILE* file = base::OS::FOpen(path.c_str(), "wb")) {
       rv = fwrite(module_bytes.begin(), module_bytes.length(), 1, file);
-      fclose(file);
+      base::Fclose(file);
     }
     if (rv != 1) {
       OFStream os(stderr);
@@ -929,6 +930,7 @@ class ModuleDecoderImpl : public Decoder {
   }
 
   void DecodeCodeSection(bool verify_functions) {
+    StartCodeSection();
     uint32_t pos = pc_offset();
     uint32_t functions_count = consume_u32v("functions count");
     CheckFunctionsCount(functions_count, pos);
@@ -947,6 +949,14 @@ class ModuleDecoderImpl : public Decoder {
     }
     DCHECK_GE(pc_offset(), pos);
     set_code_section(pos, pc_offset() - pos);
+  }
+
+  void StartCodeSection() {
+    if (ok()) {
+      // Make sure global offset were calculated before they get accessed during
+      // function compilation.
+      CalculateGlobalOffsets(module_.get());
+    }
   }
 
   bool CheckFunctionsCount(uint32_t functions_count, uint32_t offset) {
@@ -1206,6 +1216,10 @@ class ModuleDecoderImpl : public Decoder {
 
   ModuleResult FinishDecoding(bool verify_functions = true) {
     if (ok() && CheckMismatchedCounts()) {
+      // We calculate the global offsets here, because there may not be a global
+      // section and code section that would have triggered the calculation
+      // before. Even without the globals section the calculation is needed
+      // because globals can also be defined in the import section.
       CalculateGlobalOffsets(module_.get());
     }
 
@@ -1357,10 +1371,10 @@ class ModuleDecoderImpl : public Decoder {
       }
       case WasmInitExpr::kRefNullConst:
         return ValueType::Ref(expr.immediate().heap_type, kNullable);
-      case WasmInitExpr::kRttCanon:
-        // TODO(7748): If heaptype is "anyref" (not introduced yet),
-        // then this should be uint8_t{0}.
-        return ValueType::Rtt(expr.immediate().heap_type, uint8_t{1});
+      case WasmInitExpr::kRttCanon: {
+        uint8_t depth = expr.immediate().heap_type == HeapType::kAny ? 0 : 1;
+        return ValueType::Rtt(expr.immediate().heap_type, depth);
+      }
       case WasmInitExpr::kRttSub: {
         ValueType operand_type = TypeOf(*expr.operand());
         if (operand_type.is_rtt()) {
@@ -1406,7 +1420,18 @@ class ModuleDecoderImpl : public Decoder {
   }
 
   // Calculate individual global offsets and total size of globals table.
+  // This function should be called after all globals have been defined, which
+  // is after the import section and the global section, but before the global
+  // offsets are accessed, e.g. by the function compilers. The moment when this
+  // function should be called is not well-defined, as the global section may
+  // not exist. Therefore this function is called multiple times.
   void CalculateGlobalOffsets(WasmModule* module) {
+    if (module->globals.empty() || module->untagged_globals_buffer_size != 0 ||
+        module->tagged_globals_buffer_size != 0) {
+      // This function has already been executed before, so we don't have to
+      // execute it again.
+      return;
+    }
     uint32_t untagged_offset = 0;
     uint32_t tagged_offset = 0;
     uint32_t num_imported_mutable_globals = 0;
@@ -1848,7 +1873,6 @@ class ModuleDecoderImpl : public Decoder {
     ValueType result = value_type_reader::read_value_type<kFullValidation>(
         this, this->pc(), &type_length,
         origin_ == kWasmOrigin ? enabled_features_ : WasmFeatures::None());
-    if (result == kWasmBottom) error(pc_, "invalid value type");
     // We use capacity() over size() so this function works
     // mid-DecodeTypeSection.
     if (result.has_index() && result.ref_index() >= module_->types.capacity()) {
@@ -2239,6 +2263,8 @@ void ModuleDecoder::DecodeFunctionBody(uint32_t index, uint32_t length,
                                        uint32_t offset, bool verify_functions) {
   impl_->DecodeFunctionBody(index, length, offset, verify_functions);
 }
+
+void ModuleDecoder::StartCodeSection() { impl_->StartCodeSection(); }
 
 bool ModuleDecoder::CheckFunctionsCount(uint32_t functions_count,
                                         uint32_t offset) {

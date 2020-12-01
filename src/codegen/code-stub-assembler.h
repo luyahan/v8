@@ -132,6 +132,8 @@ enum class PrimitiveType { kBoolean, kNumber, kString, kSymbol };
   V(EmptyScopeInfo, empty_scope_info, EmptyScopeInfo)                        \
   V(EmptyPropertyDictionary, empty_property_dictionary,                      \
     EmptyPropertyDictionary)                                                 \
+  V(EmptyOrderedPropertyDictionary, empty_ordered_property_dictionary,       \
+    EmptyOrderedPropertyDictionary)                                          \
   V(EmptySlowElementDictionary, empty_slow_element_dictionary,               \
     EmptySlowElementDictionary)                                              \
   V(empty_string, empty_string, EmptyString)                                 \
@@ -341,9 +343,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   TNode<TIndex> TaggedToParameter(TNode<Smi> value);
 
   bool ToParameterConstant(TNode<Smi> node, intptr_t* out) {
-    Smi constant;
-    if (ToSmiConstant(node, &constant)) {
-      *out = static_cast<intptr_t>(constant.value());
+    if (TryToIntPtrConstant(node, out)) {
       return true;
     }
     return false;
@@ -351,7 +351,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
 
   bool ToParameterConstant(TNode<IntPtrT> node, intptr_t* out) {
     intptr_t constant;
-    if (ToIntPtrConstant(node, &constant)) {
+    if (TryToIntPtrConstant(node, &constant)) {
       *out = constant;
       return true;
     }
@@ -1126,12 +1126,13 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
 
   // Reference is the CSA-equivalent of a Torque reference value,
   // representing an inner pointer into a HeapObject.
+  // The object can be a HeapObject or an all-zero bitpattern.
   // TODO(gsps): Remove in favor of flattened {Load,Store}Reference interface
   struct Reference {
-    TNode<HeapObject> object;
+    TNode<Object> object;
     TNode<IntPtrT> offset;
 
-    std::tuple<TNode<HeapObject>, TNode<IntPtrT>> Flatten() const {
+    std::tuple<TNode<Object>, TNode<IntPtrT>> Flatten() const {
       return std::make_tuple(object, offset);
     }
   };
@@ -1142,6 +1143,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   TNode<T> LoadReference(Reference reference) {
     TNode<IntPtrT> offset =
         IntPtrSub(reference.offset, IntPtrConstant(kHeapObjectTag));
+    CSA_ASSERT(this, TaggedIsNotSmi(reference.object));
     return CAST(
         LoadFromObject(MachineTypeOf<T>::value, reference.object, offset));
   }
@@ -1170,6 +1172,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
     }
     TNode<IntPtrT> offset =
         IntPtrSub(reference.offset, IntPtrConstant(kHeapObjectTag));
+    CSA_ASSERT(this, TaggedIsNotSmi(reference.object));
     StoreToObject(rep, reference.object, offset, value, write_barrier);
   }
   template <class T, typename std::enable_if<
@@ -1508,7 +1511,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
                                       SloppyTNode<IntPtrT> offset,
                                       TNode<T> value) {
     int const_offset;
-    if (ToInt32Constant(offset, &const_offset)) {
+    if (TryToInt32Constant(offset, &const_offset)) {
       return StoreObjectFieldNoWriteBarrier<T>(object, const_offset, value);
     }
     StoreNoWriteBarrier(MachineRepresentationOf<T>::value, object,
@@ -1737,8 +1740,15 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   TNode<NameDictionary> CopyNameDictionary(TNode<NameDictionary> dictionary,
                                            Label* large_object_fallback);
 
-  template <typename CollectionType>
-  TNode<CollectionType> AllocateOrderedHashTable();
+  TNode<OrderedHashSet> AllocateOrderedHashSet();
+
+  TNode<OrderedHashMap> AllocateOrderedHashMap();
+
+  // Allocates an OrderedNameDictionary of the given capacity. This guarantees
+  // that |capacity| entries can be added without reallocating.
+  TNode<OrderedNameDictionary> AllocateOrderedNameDictionary(
+      TNode<IntPtrT> capacity);
+  TNode<OrderedNameDictionary> AllocateOrderedNameDictionary(int capacity);
 
   TNode<JSObject> AllocateJSObjectFromMap(
       TNode<Map> map,
@@ -2319,6 +2329,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   TNode<BoolT> IsConstructor(TNode<HeapObject> object);
   TNode<BoolT> IsDeprecatedMap(TNode<Map> map);
   TNode<BoolT> IsNameDictionary(TNode<HeapObject> object);
+  TNode<BoolT> IsOrderedNameDictionary(TNode<HeapObject> object);
   TNode<BoolT> IsGlobalDictionary(TNode<HeapObject> object);
   TNode<BoolT> IsExtensibleMap(TNode<Map> map);
   TNode<BoolT> IsExtensibleNonPrototypeMap(TNode<Map> map);
@@ -2830,10 +2841,7 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   TNode<IntPtrT> HashTableComputeCapacity(TNode<IntPtrT> at_least_space_for);
 
   template <class Dictionary>
-  TNode<Smi> GetNumberOfElements(TNode<Dictionary> dictionary) {
-    return CAST(
-        LoadFixedArrayElement(dictionary, Dictionary::kNumberOfElementsIndex));
-  }
+  TNode<Smi> GetNumberOfElements(TNode<Dictionary> dictionary);
 
   TNode<Smi> GetNumberDictionaryNumberOfElements(
       TNode<NumberDictionary> dictionary) {
@@ -3033,13 +3041,15 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
 
   // This is a building block for TryLookupProperty() above. Supports only
   // non-special fast and dictionary objects.
+  // TODO(v8:11167, v8:11177) |bailout| only needed for SetDataProperties
+  // workaround.
   void TryLookupPropertyInSimpleObject(TNode<JSObject> object, TNode<Map> map,
                                        TNode<Name> unique_name,
                                        Label* if_found_fast,
                                        Label* if_found_dict,
                                        TVariable<HeapObject>* var_meta_storage,
                                        TVariable<IntPtrT>* var_name_index,
-                                       Label* if_not_found);
+                                       Label* if_not_found, Label* bailout);
 
   // This method jumps to if_found if the element is known to exist. To
   // if_absent if it's known to not exist. To if_not_found if the prototype
@@ -3592,20 +3602,12 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
   using ForEachKeyValueFunction =
       std::function<void(TNode<Name> key, TNode<Object> value)>;
 
-  enum ForEachEnumerationMode {
-    // String and then Symbol properties according to the spec
-    // ES#sec-object.assign
-    kEnumerationOrder,
-    // Order of property addition
-    kPropertyAdditionOrder,
-  };
-
   // For each JSObject property (in DescriptorArray order), check if the key is
   // enumerable, and if so, load the value from the receiver and evaluate the
   // closure.
   void ForEachEnumerableOwnProperty(TNode<Context> context, TNode<Map> map,
                                     TNode<JSObject> object,
-                                    ForEachEnumerationMode mode,
+                                    PropertiesEnumerationMode mode,
                                     const ForEachKeyValueFunction& body,
                                     Label* bailout);
 
@@ -3631,16 +3633,12 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
       TNode<JSFinalizationRegistry> finalization_registry,
       TNode<WeakCell> weak_cell);
 
-  TNode<IntPtrT> FeedbackIteratorSizeFor(int number_of_entries) {
-    return IntPtrConstant(FeedbackIterator::SizeFor(number_of_entries));
+  TNode<IntPtrT> FeedbackIteratorEntrySize() {
+    return IntPtrConstant(FeedbackIterator::kEntrySize);
   }
 
-  TNode<IntPtrT> FeedbackIteratorMapIndexForEntry(int entry) {
-    return IntPtrConstant(FeedbackIterator::MapIndexForEntry(entry));
-  }
-
-  TNode<IntPtrT> FeedbackIteratorHandlerIndexForEntry(int entry) {
-    return IntPtrConstant(FeedbackIterator::HandlerIndexForEntry(entry));
+  TNode<IntPtrT> FeedbackIteratorHandlerOffset() {
+    return IntPtrConstant(FeedbackIterator::kHandlerOffset);
   }
 
  private:
@@ -3667,6 +3665,15 @@ class V8_EXPORT_PRIVATE CodeStubAssembler
       TNode<Map> array_map, TNode<Smi> length,
       base::Optional<TNode<AllocationSite>> allocation_site,
       TNode<IntPtrT> size_in_bytes);
+
+  // Increases the provided capacity to the next valid value, if necessary.
+  template <typename CollectionType>
+  TNode<CollectionType> AllocateOrderedHashTable(TNode<IntPtrT> capacity);
+
+  // Uses the provided capacity (which must be valid) in verbatim.
+  template <typename CollectionType>
+  TNode<CollectionType> AllocateOrderedHashTableWithCapacity(
+      TNode<IntPtrT> capacity);
 
   TNode<IntPtrT> SmiShiftBitsConstant() {
     return IntPtrConstant(kSmiShiftSize + kSmiTagSize);

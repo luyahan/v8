@@ -63,11 +63,10 @@ bool IsWasmCompileAllowed(v8::Isolate* isolate, v8::Local<v8::Value> value,
   DCHECK_GT(GetPerIsolateWasmControls()->count(isolate), 0);
   const WasmCompileControls& ctrls = GetPerIsolateWasmControls()->at(isolate);
   return (is_async && ctrls.AllowAnySizeForAsync) ||
-         (value->IsArrayBuffer() &&
-          v8::Local<v8::ArrayBuffer>::Cast(value)->ByteLength() <=
-              ctrls.MaxWasmBufferSize) ||
+         (value->IsArrayBuffer() && value.As<v8::ArrayBuffer>()->ByteLength() <=
+                                        ctrls.MaxWasmBufferSize) ||
          (value->IsArrayBufferView() &&
-          v8::Local<v8::ArrayBufferView>::Cast(value)->ByteLength() <=
+          value.As<v8::ArrayBufferView>()->ByteLength() <=
               ctrls.MaxWasmBufferSize);
 }
 
@@ -254,7 +253,7 @@ RUNTIME_FUNCTION(Runtime_IsConcurrentRecompilationSupported) {
 RUNTIME_FUNCTION(Runtime_DynamicMapChecksEnabled) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(0, args.length());
-  return isolate->heap()->ToBoolean(FLAG_turboprop_dynamic_map_checks);
+  return isolate->heap()->ToBoolean(FLAG_turbo_dynamic_map_checks);
 }
 
 RUNTIME_FUNCTION(Runtime_OptimizeFunctionOnNextCall) {
@@ -708,8 +707,8 @@ RUNTIME_FUNCTION(Runtime_SetAllocationTimeout) {
 namespace {
 
 int FixedArrayLenFromSize(int size) {
-  return Min((size - FixedArray::kHeaderSize) / kTaggedSize,
-             FixedArray::kMaxRegularLength);
+  return std::min({(size - FixedArray::kHeaderSize) / kTaggedSize,
+                   FixedArray::kMaxRegularLength});
 }
 
 void FillUpOneNewSpacePage(Isolate* isolate, Heap* heap) {
@@ -1179,13 +1178,13 @@ RUNTIME_FUNCTION(Runtime_IsWasmCode) {
 }
 
 RUNTIME_FUNCTION(Runtime_IsWasmTrapHandlerEnabled) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   DCHECK_EQ(0, args.length());
   return isolate->heap()->ToBoolean(trap_handler::IsTrapHandlerEnabled());
 }
 
 RUNTIME_FUNCTION(Runtime_IsThreadInWasm) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   DCHECK_EQ(0, args.length());
   return isolate->heap()->ToBoolean(trap_handler::IsThreadInWasm());
 }
@@ -1575,7 +1574,7 @@ RUNTIME_FUNCTION(Runtime_CompleteInobjectSlackTracking) {
 
 RUNTIME_FUNCTION(Runtime_FreezeWasmLazyCompilation) {
   DCHECK_EQ(1, args.length());
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   CONVERT_ARG_CHECKED(WasmInstanceObject, instance, 0);
 
   instance.module_object().native_module()->set_lazy_compile_frozen(true);

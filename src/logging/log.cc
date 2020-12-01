@@ -12,6 +12,7 @@
 #include "src/api/api-inl.h"
 #include "src/base/platform/mutex.h"
 #include "src/base/platform/platform.h"
+#include "src/base/platform/wrappers.h"
 #include "src/builtins/profile-data-reader.h"
 #include "src/codegen/bailout-reason.h"
 #include "src/codegen/macro-assembler.h"
@@ -124,7 +125,7 @@ class CodeEventLogger::NameBuffer {
         AppendBytes("\" ");
       }
       AppendBytes("hash ");
-      AppendHex(symbol.Hash());
+      AppendHex(symbol.hash());
       AppendByte(')');
     }
   }
@@ -138,7 +139,7 @@ class CodeEventLogger::NameBuffer {
   }
 
   void AppendBytes(const char* bytes, int size) {
-    size = Min(size, kUtf8BufferSize - utf8_pos_);
+    size = std::min(size, kUtf8BufferSize - utf8_pos_);
     MemCopy(utf8_buffer_ + utf8_pos_, bytes, size);
     utf8_pos_ += size;
   }
@@ -226,13 +227,13 @@ void CodeEventLogger::CodeCreateEvent(LogEventsAndTags tag,
                                       int column) {
   name_buffer_->Init(tag);
   name_buffer_->AppendBytes(ComputeMarker(*shared, *code));
-  name_buffer_->AppendString(shared->DebugName());
+  name_buffer_->AppendBytes(shared->DebugNameCStr().get());
   name_buffer_->AppendByte(' ');
   if (script_name->IsString()) {
     name_buffer_->AppendString(String::cast(*script_name));
   } else {
     name_buffer_->AppendBytes("symbol(hash ");
-    name_buffer_->AppendHex(Name::cast(*script_name).Hash());
+    name_buffer_->AppendHex(Name::cast(*script_name).hash());
     name_buffer_->AppendByte(')');
   }
   name_buffer_->AppendByte(':');
@@ -311,7 +312,7 @@ PerfBasicLogger::PerfBasicLogger(Isolate* isolate)
 }
 
 PerfBasicLogger::~PerfBasicLogger() {
-  fclose(perf_output_handle_);
+  base::Fclose(perf_output_handle_);
   perf_output_handle_ = nullptr;
 }
 
@@ -575,7 +576,7 @@ LowLevelLogger::LowLevelLogger(Isolate* isolate, const char* name)
 }
 
 LowLevelLogger::~LowLevelLogger() {
-  fclose(ll_output_handle_);
+  base::Fclose(ll_output_handle_);
   ll_output_handle_ = nullptr;
 }
 
@@ -1109,7 +1110,7 @@ void Logger::TimerEvent(Logger::StartEnd se, const char* name) {
 }
 
 void Logger::BasicBlockCounterEvent(const char* name, int block_id,
-                                    uint32_t count) {
+                                    double count) {
   if (!FLAG_turbo_profiling_log_builtins) return;
   std::unique_ptr<Log::MessageBuilder> msg_ptr = log_->NewMessageBuilder();
   if (!msg_ptr) return;
@@ -1281,8 +1282,8 @@ void Logger::CodeCreateEvent(LogEventsAndTags tag, Handle<AbstractCode> code,
     if (!msg_ptr) return;
     Log::MessageBuilder& msg = *msg_ptr.get();
     AppendCodeCreateHeader(msg, tag, *code, Time());
-    msg << shared->DebugName() << " " << *script_name << ":" << line << ":"
-        << column << kNext << reinterpret_cast<void*>(shared->address())
+    msg << shared->DebugNameCStr().get() << " " << *script_name << ":" << line
+        << ":" << column << kNext << reinterpret_cast<void*>(shared->address())
         << kNext << ComputeMarker(*shared, *code);
     msg.WriteToLogFile();
   }
@@ -1457,7 +1458,7 @@ void Logger::CodeDisableOptEvent(Handle<AbstractCode> code,
   if (!msg_ptr) return;
   Log::MessageBuilder& msg = *msg_ptr.get();
   msg << kLogEventsNames[CodeEventListener::CODE_DISABLE_OPT_EVENT] << kNext
-      << shared->DebugName() << kNext
+      << shared->DebugNameCStr().get() << kNext
       << GetBailoutReason(shared->disable_optimization_reason());
   msg.WriteToLogFile();
 }
@@ -1816,7 +1817,7 @@ void Logger::MapEvent(const char* type, Handle<Map> from, Handle<Map> to,
       msg << Name::cast(*name_or_sfi);
     } else if (name_or_sfi->IsSharedFunctionInfo()) {
       SharedFunctionInfo sfi = SharedFunctionInfo::cast(*name_or_sfi);
-      msg << sfi.DebugName();
+      msg << sfi.DebugNameCStr().get();
 #if V8_SFI_HAS_UNIQUE_ID
       msg << " " << sfi.unique_id();
 #endif  // V8_SFI_HAS_UNIQUE_ID
@@ -1827,7 +1828,7 @@ void Logger::MapEvent(const char* type, Handle<Map> from, Handle<Map> to,
 
 void Logger::MapCreate(Map map) {
   if (!FLAG_trace_maps) return;
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   std::unique_ptr<Log::MessageBuilder> msg_ptr = log_->NewMessageBuilder();
   if (!msg_ptr) return;
   Log::MessageBuilder& msg = *msg_ptr.get();
@@ -1837,7 +1838,7 @@ void Logger::MapCreate(Map map) {
 
 void Logger::MapDetails(Map map) {
   if (!FLAG_trace_maps) return;
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   std::unique_ptr<Log::MessageBuilder> msg_ptr = log_->NewMessageBuilder();
   if (!msg_ptr) return;
   Log::MessageBuilder& msg = *msg_ptr.get();
@@ -1866,7 +1867,7 @@ static int EnumerateCompiledFunctions(Heap* heap,
                                       Handle<SharedFunctionInfo>* sfis,
                                       Handle<AbstractCode>* code_objects) {
   HeapObjectIterator iterator(heap);
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   int compiled_funcs_count = 0;
 
   // Iterate the heap to find JSFunctions and record their optimized code.
@@ -1918,7 +1919,7 @@ static int EnumerateCompiledFunctions(Heap* heap,
 static int EnumerateWasmModuleObjects(
     Heap* heap, Handle<WasmModuleObject>* module_objects) {
   HeapObjectIterator iterator(heap);
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   int module_objects_count = 0;
 
   for (HeapObject obj = iterator.Next(); !obj.is_null();
@@ -1953,7 +1954,7 @@ void Logger::LogCompiledFunctions() {
 void Logger::LogAccessorCallbacks() {
   Heap* heap = isolate_->heap();
   HeapObjectIterator iterator(heap);
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   for (HeapObject obj = iterator.Next(); !obj.is_null();
        obj = iterator.Next()) {
     if (!obj.IsAccessorInfo()) continue;
@@ -1979,7 +1980,7 @@ void Logger::LogAccessorCallbacks() {
 }
 
 void Logger::LogAllMaps() {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   Heap* heap = isolate_->heap();
   CombinedHeapObjectIterator iterator(heap);
   for (HeapObject obj = iterator.Next(); !obj.is_null();
@@ -2227,7 +2228,7 @@ void ExistingCodeLogger::LogCodeObject(Object object) {
 void ExistingCodeLogger::LogCodeObjects() {
   Heap* heap = isolate_->heap();
   HeapObjectIterator iterator(heap);
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   for (HeapObject obj = iterator.Next(); !obj.is_null();
        obj = iterator.Next()) {
     if (obj.IsCode()) LogCodeObject(obj);
@@ -2306,8 +2307,14 @@ void ExistingCodeLogger::LogExistingFunction(
 #if USES_FUNCTION_DESCRIPTORS
       entry_point = *FUNCTION_ENTRYPOINT_ADDRESS(entry_point);
 #endif
-      CALL_CODE_EVENT_HANDLER(
-          CallbackEvent(handle(shared->DebugName(), isolate_), entry_point))
+      Handle<String> fun_name = SharedFunctionInfo::DebugName(shared);
+      CALL_CODE_EVENT_HANDLER(CallbackEvent(fun_name, entry_point))
+
+      // Fast API function.
+      Address c_function = v8::ToCData<Address>(fun_data.GetCFunction());
+      if (c_function != kNullAddress) {
+        CALL_CODE_EVENT_HANDLER(CallbackEvent(fun_name, c_function))
+      }
     }
   }
 }

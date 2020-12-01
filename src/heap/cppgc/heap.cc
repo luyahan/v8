@@ -12,6 +12,7 @@
 #include "src/heap/cppgc/marker.h"
 #include "src/heap/cppgc/marking-verifier.h"
 #include "src/heap/cppgc/prefinalizer-handler.h"
+#include "src/heap/cppgc/stats-collector.h"
 
 namespace cppgc {
 
@@ -43,12 +44,15 @@ void Heap::ForceGarbageCollectionSlow(const char* source, const char* reason,
   internal::Heap::From(this)->CollectGarbage(
       {internal::GarbageCollector::Config::CollectionType::kMajor, stack_state,
        internal::GarbageCollector::Config::MarkingType::kAtomic,
-       internal::GarbageCollector::Config::SweepingType::kAtomic});
+       internal::GarbageCollector::Config::SweepingType::kAtomic,
+       internal::GarbageCollector::Config::IsForcedGC::kForced});
 }
 
 AllocationHandle& Heap::GetAllocationHandle() {
   return internal::Heap::From(this)->object_allocator();
 }
+
+HeapHandle& Heap::GetHeapHandle() { return *internal::Heap::From(this); }
 
 namespace internal {
 
@@ -142,7 +146,8 @@ void Heap::StartGarbageCollection(Config config) {
 #endif
 
   const Marker::MarkingConfig marking_config{
-      config.collection_type, config.stack_state, config.marking_type};
+      config.collection_type, config.stack_state, config.marking_type,
+      config.is_forced_gc};
   marker_ = MarkerFactory::CreateAndStartMarking<Marker>(
       AsBase(), platform_.get(), marking_config);
 }
@@ -153,30 +158,48 @@ void Heap::FinalizeGarbageCollection(Config::StackState stack_state) {
   config_.stack_state = stack_state;
   DCHECK(marker_);
   {
-    // Pre finalizers are forbidden from allocating objects. Note that this also
-    // guard atomic pause marking below, meaning that no internal method or
+    // This guards atomic pause marking, meaning that no internal method or
     // external callbacks are allowed to allocate new objects.
     ObjectAllocator::NoAllocationScope no_allocation_scope_(object_allocator_);
     marker_->FinishMarking(stack_state);
-    prefinalizer_handler_->InvokePreFinalizers();
   }
-  marker_.reset();
-  // TODO(chromium:1056170): replace build flag with dedicated flag.
-#if DEBUG
-  MarkingVerifier verifier(*this);
-  verifier.Run(stack_state);
-#endif
   {
+    StatsCollector::EnabledScope stats(
+        *this, StatsCollector::kAtomicPauseSweepAndCompact);
+
+    {
+      // Pre finalizers are forbidden from allocating objects.
+      ObjectAllocator::NoAllocationScope no_allocation_scope_(
+          object_allocator_);
+      prefinalizer_handler_->InvokePreFinalizers();
+    }
+    marker_.reset();
+    // TODO(chromium:1056170): replace build flag with dedicated flag.
+#if DEBUG
+    MarkingVerifier verifier(*this);
+    verifier.Run(stack_state);
+#endif
+
     NoGCScope no_gc(*this);
     const Sweeper::SweepingConfig sweeping_config{
         config_.sweeping_type,
         Sweeper::SweepingConfig::CompactableSpaceHandling::kSweep};
     sweeper_.Start(sweeping_config);
   }
-  gc_in_progress_ = false;
+  sweeper_.NotifyDoneIfNeeded();
 }
 
+void Heap::PostGarbageCollection() { gc_in_progress_ = false; }
+
 void Heap::DisableHeapGrowingForTesting() { growing_.DisableForTesting(); }
+
+void Heap::FinalizeIncrementalGarbageCollectionIfNeeded(
+    Config::StackState stack_state) {
+  StatsCollector::EnabledScope stats_scope(
+      *this, StatsCollector::kIncrementalMarkingFinalize);
+
+  FinalizeGarbageCollection(stack_state);
+}
 
 }  // namespace internal
 }  // namespace cppgc

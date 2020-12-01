@@ -440,6 +440,8 @@ inline LanguageMode stricter_language_mode(LanguageMode mode1,
                                    static_cast<int>(mode2));
 }
 
+enum class ScriptType { kClassic, kModule };
+
 // A non-keyed store is of the form a.x = foo or a["x"] = foo whereas
 // a keyed store is of the form a[expression] = foo.
 enum class StoreOrigin { kMaybeKeyed, kNamed };
@@ -1762,6 +1764,14 @@ class int31_t {
 
  private:
   int32_t value_;
+};
+
+enum PropertiesEnumerationMode {
+  // String and then Symbol properties according to the spec
+  // ES#sec-object.assign
+  kEnumerationOrder,
+  // Order of property addition
+  kPropertyAdditionOrder,
 };
 
 }  // namespace internal

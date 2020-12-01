@@ -18,7 +18,7 @@ namespace internal {
 
 namespace {
 
-class InvokeScope {
+class V8_NODISCARD InvokeScope {
  public:
   explicit InvokeScope(Isolate* isolate)
       : isolate_(isolate), save_context_(isolate) {}
@@ -148,7 +148,7 @@ void EnableAccessChecks(Isolate* isolate, Handle<JSObject> object) {
   JSObject::MigrateToMap(isolate, object, new_map);
 }
 
-class AccessCheckDisableScope {
+class V8_NODISCARD AccessCheckDisableScope {
  public:
   AccessCheckDisableScope(Isolate* isolate, Handle<JSObject> obj)
       : isolate_(isolate),
@@ -357,7 +357,7 @@ void UncacheTemplateInstantiation(Isolate* isolate,
 
 bool IsSimpleInstantiation(Isolate* isolate, ObjectTemplateInfo info,
                            JSReceiver new_target) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
 
   if (!new_target.IsJSFunction()) return false;
   JSFunction fun = JSFunction::cast(new_target);

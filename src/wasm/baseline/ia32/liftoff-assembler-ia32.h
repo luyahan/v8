@@ -5,6 +5,7 @@
 #ifndef V8_WASM_BASELINE_IA32_LIFTOFF_ASSEMBLER_IA32_H_
 #define V8_WASM_BASELINE_IA32_LIFTOFF_ASSEMBLER_IA32_H_
 
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/assembler.h"
 #include "src/heap/memory-chunk.h"
 #include "src/wasm/baseline/liftoff-assembler.h"
@@ -20,6 +21,31 @@ namespace wasm {
   CpuFeatureScope feature(this, name);
 
 namespace liftoff {
+
+inline constexpr Condition ToCondition(LiftoffCondition liftoff_cond) {
+  switch (liftoff_cond) {
+    case kEqual:
+      return equal;
+    case kUnequal:
+      return not_equal;
+    case kSignedLessThan:
+      return less;
+    case kSignedLessEqual:
+      return less_equal;
+    case kSignedGreaterThan:
+      return greater;
+    case kSignedGreaterEqual:
+      return greater_equal;
+    case kUnsignedLessThan:
+      return below;
+    case kUnsignedLessEqual:
+      return below_equal;
+    case kUnsignedGreaterThan:
+      return above;
+    case kUnsignedGreaterEqual:
+      return above_equal;
+  }
+}
 
 // ebp-4 holds the stack marker, ebp-8 is the instance parameter.
 constexpr int kInstanceOffset = 8;
@@ -158,6 +184,10 @@ constexpr int kSubSpSize = 6;  // 6 bytes for "sub esp, <imm32>"
 
 int LiftoffAssembler::PrepareStackFrame() {
   int offset = pc_offset();
+  // Next we reserve the memory for the whole stack frame. We do not know yet
+  // how big the stack frame will be so we just emit a placeholder instruction.
+  // PatchPrepareStackFrame will patch this in order to increase the stack
+  // appropriately.
   sub_sp_32(0);
   DCHECK_EQ(liftoff::kSubSpSize, pc_offset() - offset);
   return offset;
@@ -184,7 +214,11 @@ void LiftoffAssembler::PrepareTailCall(int num_callee_stack_params,
   pop(ebp);
 }
 
-void LiftoffAssembler::PatchPrepareStackFrame(int offset, int frame_size) {
+void LiftoffAssembler::PatchPrepareStackFrame(int offset) {
+  // The frame_size includes the frame marker. The frame marker has already been
+  // pushed on the stack though, so we don't need to allocate memory for it
+  // anymore.
+  int frame_size = GetTotalFrameSize() - kSystemPointerSize;
   DCHECK_EQ(frame_size % kSystemPointerSize, 0);
   // We can't run out of space, just pass anything big enough to not cause the
   // assembler to try to grow the buffer.
@@ -229,7 +263,8 @@ constexpr int LiftoffAssembler::StaticStackFrameSize() {
 }
 
 int LiftoffAssembler::SlotSizeForType(ValueType type) {
-  return type.element_size_bytes();
+  return type.is_reference_type() ? kSystemPointerSize
+                                  : type.element_size_bytes();
 }
 
 bool LiftoffAssembler::NeedsAlignment(ValueType type) {
@@ -1453,20 +1488,21 @@ inline void OpWithCarry(LiftoffAssembler* assm, LiftoffRegister dst,
 template <void (Assembler::*op)(Register, const Immediate&),
           void (Assembler::*op_with_carry)(Register, int32_t)>
 inline void OpWithCarryI(LiftoffAssembler* assm, LiftoffRegister dst,
-                         LiftoffRegister lhs, int32_t imm) {
+                         LiftoffRegister lhs, int64_t imm) {
   // The compiler allocated registers such that either {dst == lhs} or there is
   // no overlap between the two.
   DCHECK_NE(dst.low_gp(), lhs.high_gp());
 
+  int32_t imm_low_word = static_cast<int32_t>(imm);
+  int32_t imm_high_word = static_cast<int32_t>(imm >> 32);
+
   // First, compute the low half of the result.
   if (dst.low_gp() != lhs.low_gp()) assm->mov(dst.low_gp(), lhs.low_gp());
-  (assm->*op)(dst.low_gp(), Immediate(imm));
+  (assm->*op)(dst.low_gp(), Immediate(imm_low_word));
 
   // Now compute the upper half.
   if (dst.high_gp() != lhs.high_gp()) assm->mov(dst.high_gp(), lhs.high_gp());
-  // Top half of the immediate sign extended, either 0 or -1.
-  int32_t sign_extend = imm < 0 ? -1 : 0;
-  (assm->*op_with_carry)(dst.high_gp(), sign_extend);
+  (assm->*op_with_carry)(dst.high_gp(), imm_high_word);
 }
 }  // namespace liftoff
 
@@ -1476,7 +1512,7 @@ void LiftoffAssembler::emit_i64_add(LiftoffRegister dst, LiftoffRegister lhs,
 }
 
 void LiftoffAssembler::emit_i64_addi(LiftoffRegister dst, LiftoffRegister lhs,
-                                     int32_t imm) {
+                                     int64_t imm) {
   liftoff::OpWithCarryI<&Assembler::add, &Assembler::adc>(this, dst, lhs, imm);
 }
 
@@ -2330,9 +2366,10 @@ void LiftoffAssembler::emit_jump(Label* label) { jmp(label); }
 
 void LiftoffAssembler::emit_jump(Register target) { jmp(target); }
 
-void LiftoffAssembler::emit_cond_jump(Condition cond, Label* label,
-                                      ValueType type, Register lhs,
-                                      Register rhs) {
+void LiftoffAssembler::emit_cond_jump(LiftoffCondition liftoff_cond,
+                                      Label* label, ValueType type,
+                                      Register lhs, Register rhs) {
+  Condition cond = liftoff::ToCondition(liftoff_cond);
   if (rhs != no_reg) {
     switch (type.kind()) {
       case ValueType::kI32:
@@ -2372,8 +2409,10 @@ void LiftoffAssembler::emit_i32_eqz(Register dst, Register src) {
   liftoff::setcc_32(this, equal, dst);
 }
 
-void LiftoffAssembler::emit_i32_set_cond(Condition cond, Register dst,
-                                         Register lhs, Register rhs) {
+void LiftoffAssembler::emit_i32_set_cond(LiftoffCondition liftoff_cond,
+                                         Register dst, Register lhs,
+                                         Register rhs) {
+  Condition cond = liftoff::ToCondition(liftoff_cond);
   cmp(lhs, rhs);
   liftoff::setcc_32(this, cond, dst);
 }
@@ -2391,7 +2430,7 @@ void LiftoffAssembler::emit_i64_eqz(Register dst, LiftoffRegister src) {
 }
 
 namespace liftoff {
-inline Condition cond_make_unsigned(Condition cond) {
+inline LiftoffCondition cond_make_unsigned(LiftoffCondition cond) {
   switch (cond) {
     case kSignedLessThan:
       return kUnsignedLessThan;
@@ -2407,9 +2446,13 @@ inline Condition cond_make_unsigned(Condition cond) {
 }
 }  // namespace liftoff
 
-void LiftoffAssembler::emit_i64_set_cond(Condition cond, Register dst,
-                                         LiftoffRegister lhs,
+void LiftoffAssembler::emit_i64_set_cond(LiftoffCondition liftoff_cond,
+                                         Register dst, LiftoffRegister lhs,
                                          LiftoffRegister rhs) {
+  Condition cond = liftoff::ToCondition(liftoff_cond);
+  Condition unsigned_cond =
+      liftoff::ToCondition(liftoff::cond_make_unsigned(liftoff_cond));
+
   // Get the tmp byte register out here, such that we don't conditionally spill
   // (this cannot be reflected in the cache state).
   Register tmp_byte_reg = liftoff::GetTmpByteRegister(this, dst);
@@ -2417,7 +2460,6 @@ void LiftoffAssembler::emit_i64_set_cond(Condition cond, Register dst,
   // For signed i64 comparisons, we still need to use unsigned comparison for
   // the low word (the only bit carrying signedness information is the MSB in
   // the high word).
-  Condition unsigned_cond = liftoff::cond_make_unsigned(cond);
   Label setcc;
   Label cont;
   // Compare high word first. If it differs, use if for the setcc. If it's
@@ -2464,15 +2506,17 @@ void EmitFloatSetCond(LiftoffAssembler* assm, Condition cond, Register dst,
 }
 }  // namespace liftoff
 
-void LiftoffAssembler::emit_f32_set_cond(Condition cond, Register dst,
-                                         DoubleRegister lhs,
+void LiftoffAssembler::emit_f32_set_cond(LiftoffCondition liftoff_cond,
+                                         Register dst, DoubleRegister lhs,
                                          DoubleRegister rhs) {
+  Condition cond = liftoff::ToCondition(liftoff_cond);
   liftoff::EmitFloatSetCond<&Assembler::ucomiss>(this, cond, dst, lhs, rhs);
 }
 
-void LiftoffAssembler::emit_f64_set_cond(Condition cond, Register dst,
-                                         DoubleRegister lhs,
+void LiftoffAssembler::emit_f64_set_cond(LiftoffCondition liftoff_cond,
+                                         Register dst, DoubleRegister lhs,
                                          DoubleRegister rhs) {
+  Condition cond = liftoff::ToCondition(liftoff_cond);
   liftoff::EmitFloatSetCond<&Assembler::ucomisd>(this, cond, dst, lhs, rhs);
 }
 
@@ -2627,7 +2671,7 @@ inline void EmitAllTrue(LiftoffAssembler* assm, LiftoffRegister dst,
 }  // namespace liftoff
 
 void LiftoffAssembler::LoadTransform(LiftoffRegister dst, Register src_addr,
-                                     Register offset_reg, uint32_t offset_imm,
+                                     Register offset_reg, uintptr_t offset_imm,
                                      LoadType type,
                                      LoadTransformationKind transform,
                                      uint32_t* protected_load_pc) {
@@ -3013,7 +3057,7 @@ void LiftoffAssembler::emit_f64x2_le(LiftoffRegister dst, LiftoffRegister lhs,
 void LiftoffAssembler::emit_s128_const(LiftoffRegister dst,
                                        const uint8_t imms[16]) {
   uint64_t vals[2];
-  memcpy(vals, imms, sizeof(vals));
+  base::Memcpy(vals, imms, sizeof(vals));
   TurboAssembler::Move(dst.fp(), vals[0]);
 
   uint64_t high = vals[1];

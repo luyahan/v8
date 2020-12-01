@@ -35,12 +35,12 @@ class Simd128;
   V(I8, 0, I8, Int8, 'b', "i8")          \
   V(I16, 1, I16, Int16, 'h', "i16")
 
-#define FOREACH_VALUE_TYPE(V)                                               \
-  V(Stmt, -1, Void, None, 'v', "<stmt>")                                    \
-  FOREACH_NUMERIC_VALUE_TYPE(V)                                             \
-  V(Rtt, kSystemPointerSizeLog2, Rtt, TaggedPointer, 't', "rtt")            \
-  V(Ref, kSystemPointerSizeLog2, Ref, TaggedPointer, 'r', "ref")            \
-  V(OptRef, kSystemPointerSizeLog2, OptRef, TaggedPointer, 'n', "ref null") \
+#define FOREACH_VALUE_TYPE(V)                                    \
+  V(Stmt, -1, Void, None, 'v', "<stmt>")                         \
+  FOREACH_NUMERIC_VALUE_TYPE(V)                                  \
+  V(Rtt, kTaggedSizeLog2, Rtt, TaggedPointer, 't', "rtt")        \
+  V(Ref, kTaggedSizeLog2, Ref, AnyTagged, 'r', "ref")            \
+  V(OptRef, kTaggedSizeLog2, OptRef, AnyTagged, 'n', "ref null") \
   V(Bottom, -1, Void, None, '*', "<bot>")
 
 // Represents a WebAssembly heap type, as per the typed-funcref and gc
@@ -57,6 +57,7 @@ class HeapType {
     kEq,                      // shorthand: q
     kExn,                     // shorthand: x
     kI31,                     // shorthand: j
+    kAny,                     // shorthand: a
     // This value is used to represent failures in the parsing of heap types and
     // does not correspond to a wasm heap type.
     kBottom
@@ -64,7 +65,7 @@ class HeapType {
   // Internal use only; defined in the public section to make it easy to
   // check that they are defined correctly:
   static constexpr Representation kFirstSentinel = kFunc;
-  static constexpr Representation kLastSentinel = kI31;
+  static constexpr Representation kLastSentinel = kAny;
 
   static constexpr HeapType from_code(uint8_t code) {
     switch (code) {
@@ -78,6 +79,8 @@ class HeapType {
         return HeapType(kExn);
       case ValueTypeCode::kI31RefCode:
         return HeapType(kI31);
+      case ValueTypeCode::kAnyRefCode:
+        return HeapType(kAny);
       default:
         return HeapType(kBottom);
     }
@@ -130,6 +133,8 @@ class HeapType {
         return std::string("exn");
       case kI31:
         return std::string("i31");
+      case kAny:
+        return std::string("any");
       default:
         return std::to_string(representation_);
     }
@@ -151,6 +156,8 @@ class HeapType {
         return mask | kEqRefCode;
       case kI31:
         return mask | kI31RefCode;
+      case kAny:
+        return mask | kAnyRefCode;
       default:
         return static_cast<int32_t>(representation_);
     }
@@ -366,6 +373,8 @@ class ValueType {
             return kEqRefCode;
           case HeapType::kExn:
             return kExnRefCode;
+          case HeapType::kAny:
+            return kAnyRefCode;
           default:
             return kOptRefCode;
         }
@@ -503,6 +512,7 @@ constexpr ValueType kWasmExternRef =
     ValueType::Ref(HeapType::kExtern, kNullable);
 constexpr ValueType kWasmEqRef = ValueType::Ref(HeapType::kEq, kNullable);
 constexpr ValueType kWasmI31Ref = ValueType::Ref(HeapType::kI31, kNonNullable);
+constexpr ValueType kWasmAnyRef = ValueType::Ref(HeapType::kAny, kNullable);
 
 #define FOREACH_WASMVALUE_CTYPES(V) \
   V(kI32, int32_t)                  \

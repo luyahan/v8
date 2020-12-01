@@ -565,10 +565,12 @@ class V8_EXPORT_PRIVATE CodeAssembler {
     return value ? Int32TrueConstant() : Int32FalseConstant();
   }
 
-  bool ToInt32Constant(Node* node, int32_t* out_value);
-  bool ToInt64Constant(Node* node, int64_t* out_value);
-  bool ToIntPtrConstant(Node* node, intptr_t* out_value);
-  bool ToSmiConstant(Node* node, Smi* out_value);
+  bool TryToInt32Constant(TNode<IntegralT> node, int32_t* out_value);
+  bool TryToInt64Constant(TNode<IntegralT> node, int64_t* out_value);
+  bool TryToIntPtrConstant(TNode<IntegralT> node, intptr_t* out_value);
+  bool TryToIntPtrConstant(TNode<Smi> tnode, intptr_t* out_value);
+  bool TryToSmiConstant(TNode<IntegralT> node, Smi* out_value);
+  bool TryToSmiConstant(TNode<Smi> node, Smi* out_value);
 
   bool IsUndefinedConstant(TNode<Object> node);
   bool IsNullConstant(TNode<Object> node);
@@ -647,7 +649,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   void SetSourcePosition(const char* file, int line);
   void PushSourcePosition();
   void PopSourcePosition();
-  class SourcePositionScope {
+  class V8_NODISCARD SourcePositionScope {
    public:
     explicit SourcePositionScope(CodeAssembler* ca) : ca_(ca) {
       ca->PushSourcePosition();
@@ -760,35 +762,36 @@ class V8_EXPORT_PRIVATE CodeAssembler {
       Node* base, Node* offset,
       LoadSensitivity needs_poisoning = LoadSensitivity::kSafe);
 
-  Node* LoadFromObject(MachineType type, TNode<HeapObject> object,
+  Node* LoadFromObject(MachineType type, TNode<Object> object,
                        TNode<IntPtrT> offset);
 
   // Load a value from the root array.
   TNode<Object> LoadRoot(RootIndex root_index);
 
   // Store value to raw memory location.
-  Node* Store(Node* base, Node* value);
-  Node* Store(Node* base, Node* offset, Node* value);
-  Node* StoreEphemeronKey(Node* base, Node* offset, Node* value);
-  Node* StoreNoWriteBarrier(MachineRepresentation rep, Node* base, Node* value);
-  Node* StoreNoWriteBarrier(MachineRepresentation rep, Node* base, Node* offset,
-                            Node* value);
-  Node* UnsafeStoreNoWriteBarrier(MachineRepresentation rep, Node* base,
-                                  Node* value);
-  Node* UnsafeStoreNoWriteBarrier(MachineRepresentation rep, Node* base,
-                                  Node* offset, Node* value);
+  void Store(Node* base, Node* value);
+  void Store(Node* base, Node* offset, Node* value);
+  void StoreEphemeronKey(Node* base, Node* offset, Node* value);
+  void StoreNoWriteBarrier(MachineRepresentation rep, Node* base, Node* value);
+  void StoreNoWriteBarrier(MachineRepresentation rep, Node* base, Node* offset,
+                           Node* value);
+  void UnsafeStoreNoWriteBarrier(MachineRepresentation rep, Node* base,
+                                 Node* value);
+  void UnsafeStoreNoWriteBarrier(MachineRepresentation rep, Node* base,
+                                 Node* offset, Node* value);
 
   // Stores uncompressed tagged value to (most likely off JS heap) memory
   // location without write barrier.
-  Node* StoreFullTaggedNoWriteBarrier(Node* base, Node* tagged_value);
-  Node* StoreFullTaggedNoWriteBarrier(Node* base, Node* offset,
-                                      Node* tagged_value);
+  void StoreFullTaggedNoWriteBarrier(TNode<RawPtrT> base,
+                                     TNode<Object> tagged_value);
+  void StoreFullTaggedNoWriteBarrier(TNode<RawPtrT> base, TNode<IntPtrT> offset,
+                                     TNode<Object> tagged_value);
 
   // Optimized memory operations that map to Turbofan simplified nodes.
   TNode<HeapObject> OptimizedAllocate(TNode<IntPtrT> size,
                                       AllocationType allocation,
                                       AllowLargeObjects allow_large_objects);
-  void StoreToObject(MachineRepresentation rep, TNode<HeapObject> object,
+  void StoreToObject(MachineRepresentation rep, TNode<Object> object,
                      TNode<IntPtrT> offset, Node* value,
                      StoreToObjectWriteBarrier write_barrier);
   void OptimizedStoreField(MachineRepresentation rep, TNode<HeapObject> object,
@@ -800,10 +803,12 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                                                TNode<HeapObject> object,
                                                int offset, Node* value);
   void OptimizedStoreMap(TNode<HeapObject> object, TNode<Map>);
+  void AtomicStore(MachineRepresentation rep, TNode<RawPtrT> base,
+                   TNode<WordT> offset, TNode<Word32T> value);
   // {value_high} is used for 64-bit stores on 32-bit platforms, must be
   // nullptr in other cases.
-  Node* AtomicStore(MachineRepresentation rep, Node* base, Node* offset,
-                    Node* value, Node* value_high = nullptr);
+  void AtomicStore64(TNode<RawPtrT> base, TNode<WordT> offset,
+                     TNode<UintPtrT> value, TNode<UintPtrT> value_high);
 
   TNode<Word32T> AtomicAdd(MachineType type, TNode<RawPtrT> base,
                            TNode<UintPtrT> offset, TNode<Word32T> value);
@@ -857,7 +862,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                                       TNode<UintPtrT> new_value_high);
 
   // Store a value to the root array.
-  Node* StoreRoot(RootIndex root_index, Node* value);
+  void StoreRoot(RootIndex root_index, TNode<Object> value);
 
 // Basic arithmetic operations.
 #define DECLARE_CODE_ASSEMBLER_BINARY_OP(name, ResType, Arg1Type, Arg2Type) \
@@ -1560,7 +1565,7 @@ class V8_EXPORT_PRIVATE CodeAssemblerState {
   VariableId NextVariableId() { return next_variable_id_++; }
 };
 
-class V8_EXPORT_PRIVATE ScopedExceptionHandler {
+class V8_EXPORT_PRIVATE V8_NODISCARD ScopedExceptionHandler {
  public:
   ScopedExceptionHandler(CodeAssembler* assembler,
                          CodeAssemblerExceptionHandlerLabel* label);

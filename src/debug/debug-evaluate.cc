@@ -567,6 +567,7 @@ DebugInfo::SideEffectState BuiltinGetSideEffectState(Builtins::Name id) {
     case Builtins::kArrayIndexOf:
     case Builtins::kArrayPrototypeValues:
     case Builtins::kArrayIncludes:
+    case Builtins::kArrayPrototypeAt:
     case Builtins::kArrayPrototypeEntries:
     case Builtins::kArrayPrototypeFill:
     case Builtins::kArrayPrototypeFind:
@@ -592,6 +593,7 @@ DebugInfo::SideEffectState BuiltinGetSideEffectState(Builtins::Name id) {
     case Builtins::kTrace:
     // TypedArray builtins.
     case Builtins::kTypedArrayConstructor:
+    case Builtins::kTypedArrayPrototypeAt:
     case Builtins::kTypedArrayPrototypeBuffer:
     case Builtins::kTypedArrayPrototypeByteLength:
     case Builtins::kTypedArrayPrototypeByteOffset:
@@ -759,6 +761,7 @@ DebugInfo::SideEffectState BuiltinGetSideEffectState(Builtins::Name id) {
     case Builtins::kStringFromCodePoint:
     case Builtins::kStringConstructor:
     case Builtins::kStringPrototypeAnchor:
+    case Builtins::kStringPrototypeAt:
     case Builtins::kStringPrototypeBig:
     case Builtins::kStringPrototypeBlink:
     case Builtins::kStringPrototypeBold:
@@ -899,7 +902,7 @@ DebugInfo::SideEffectState DebugEvaluate::FunctionGetSideEffectState(
     Isolate* isolate, Handle<SharedFunctionInfo> info) {
   if (FLAG_trace_side_effect_free_debug_evaluate) {
     PrintF("[debug-evaluate] Checking function %s for side effect.\n",
-           info->DebugName().ToCString().get());
+           info->DebugNameCStr().get());
   }
 
   DCHECK(info->is_compiled());

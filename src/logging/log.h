@@ -247,7 +247,7 @@ class Logger : public CodeEventListener {
 
   V8_EXPORT_PRIVATE void TimerEvent(StartEnd se, const char* name);
 
-  void BasicBlockCounterEvent(const char* name, int block_id, uint32_t count);
+  void BasicBlockCounterEvent(const char* name, int block_id, double count);
 
   void BuiltinHashEvent(const char* name, int hash);
 
@@ -372,7 +372,7 @@ TIMER_EVENTS_LIST(V)
 #undef V
 
 template <class TimerEvent>
-class TimerEventScope {
+class V8_NODISCARD TimerEventScope {
  public:
   explicit TimerEventScope(Isolate* isolate) : isolate_(isolate) {
     LogTimerEvent(Logger::START);

@@ -61,6 +61,8 @@ enum class OddballType : uint8_t {
   /* Subtypes of FixedArray */                      \
   V(ObjectBoilerplateDescription)                   \
   V(ScopeInfo)                                      \
+  /* Subtypes of String */                          \
+  V(InternalizedString)                             \
   /* Subtypes of Name */                            \
   V(Symbol)                                         \
   /* Subtypes of HeapObject */                      \
@@ -92,7 +94,6 @@ enum class OddballType : uint8_t {
   V(FixedArray)                               \
   V(FixedDoubleArray)                         \
   /* Subtypes of Name */                      \
-  V(InternalizedString)                       \
   V(String)                                   \
   /* Subtypes of JSReceiver */                \
   V(JSObject)                                 \
@@ -176,6 +177,10 @@ class V8_EXPORT_PRIVATE ObjectRef {
       return lhs.equals(rhs);
     }
   };
+
+#ifdef DEBUG
+  bool IsNeverSerializedHeapObject() const;
+#endif  // DEBUG
 
  protected:
   JSHeapBroker* broker() const;
@@ -592,7 +597,6 @@ class V8_EXPORT_PRIVATE MapRef : public HeapObjectRef {
   int UnusedPropertyFields() const;
   ElementsKind elements_kind() const;
   bool is_stable() const;
-  bool is_extensible() const;
   bool is_constructor() const;
   bool has_prototype_slot() const;
   bool is_access_check_needed() const;
@@ -631,7 +635,6 @@ class V8_EXPORT_PRIVATE MapRef : public HeapObjectRef {
       ZoneVector<MapRef>* prototype_maps);
 
   // Concerning the underlying instance_descriptors:
-  void SerializeOwnDescriptors();
   void SerializeOwnDescriptor(InternalIndex descriptor_index);
   bool serialized_own_descriptor(InternalIndex descriptor_index) const;
   MapRef FindFieldOwner(InternalIndex descriptor_index) const;
@@ -816,13 +819,6 @@ class V8_EXPORT_PRIVATE SharedFunctionInfoRef : public HeapObjectRef {
   bool IsInlineable() const {
     return GetInlineability() == SharedFunctionInfo::kIsInlineable;
   }
-
-  // Template objects may not be created at compilation time. This method
-  // wraps the retrieval of the template object and creates it if
-  // necessary.
-  JSArrayRef GetTemplateObject(
-      TemplateObjectDescriptionRef description, FeedbackSource const& source,
-      SerializationPolicy policy = SerializationPolicy::kAssumeSerialized);
 
   void SerializeFunctionTemplateInfo();
   base::Optional<FunctionTemplateInfoRef> function_template_info() const;

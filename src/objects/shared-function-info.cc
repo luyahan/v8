@@ -27,7 +27,7 @@ uint32_t SharedFunctionInfo::Hash() {
 }
 
 void SharedFunctionInfo::Init(ReadOnlyRoots ro_roots, int unique_id) {
-  DisallowHeapAllocation no_allocation;
+  DisallowGarbageCollection no_gc;
 
   // Set the function data to the "illegal" builtin. Ideally we'd use some sort
   // of "uninitialized" marker here, but it's cheaper to use a valid buitin and
@@ -157,7 +157,7 @@ void SharedFunctionInfo::SetScript(ReadOnlyRoots roots,
                                    HeapObject script_object,
                                    int function_literal_id,
                                    bool reset_preparsed_scope_data) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
 
   if (script() == script_object) return;
 
@@ -233,17 +233,35 @@ CoverageInfo SharedFunctionInfo::GetCoverageInfo() const {
   return CoverageInfo::cast(GetDebugInfo().coverage_info());
 }
 
-String SharedFunctionInfo::DebugName() {
-  DisallowHeapAllocation no_gc;
+std::unique_ptr<char[]> SharedFunctionInfo::DebugNameCStr() {
+  if (HasWasmExportedFunctionData()) {
+    return WasmExportedFunction::GetDebugName(
+        wasm_exported_function_data().sig());
+  }
+  DisallowGarbageCollection no_gc;
   String function_name = Name();
-  if (function_name.length() > 0) return function_name;
-  return inferred_name();
+  if (function_name.length() == 0) function_name = inferred_name();
+  return function_name.ToCString();
+}
+
+// static
+Handle<String> SharedFunctionInfo::DebugName(
+    Handle<SharedFunctionInfo> shared) {
+  if (shared->HasWasmExportedFunctionData()) {
+    return shared->GetIsolate()
+        ->factory()
+        ->NewStringFromUtf8(CStrVector(shared->DebugNameCStr().get()))
+        .ToHandleChecked();
+  }
+  DisallowHeapAllocation no_gc;
+  String function_name = shared->Name();
+  if (function_name.length() == 0) function_name = shared->inferred_name();
+  return handle(function_name, shared->GetIsolate());
 }
 
 bool SharedFunctionInfo::PassesFilter(const char* raw_filter) {
   Vector<const char> filter = CStrVector(raw_filter);
-  std::unique_ptr<char[]> cstrname(DebugName().ToCString());
-  return v8::internal::PassesFilter(CStrVector(cstrname.get()), filter);
+  return v8::internal::PassesFilter(CStrVector(DebugNameCStr().get()), filter);
 }
 
 bool SharedFunctionInfo::HasSourceCode() const {
@@ -257,7 +275,7 @@ void SharedFunctionInfo::DiscardCompiledMetadata(
     Isolate* isolate,
     std::function<void(HeapObject object, ObjectSlot slot, HeapObject target)>
         gc_notify_updated_slot) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   if (is_compiled()) {
     if (FLAG_trace_flush_bytecode) {
       CodeTracer::Scope scope(GetIsolate()->GetCodeTracer());
@@ -422,10 +440,21 @@ std::ostream& operator<<(std::ostream& os, const SourceCodeOf& v) {
   }
 }
 
+bool SharedFunctionInfo::TryGetCachedCodeAndSerializedFeedback(
+    Isolate* isolate, MaybeHandle<Code>* code_out,
+    MaybeHandle<SerializedFeedback>* feedback_out) {
+  if (!may_have_cached_code()) return {};
+  Handle<SharedFunctionInfo> sfi(*this, isolate);
+  return isolate->compilation_cache()->LookupCode(sfi, code_out, feedback_out);
+}
+
 MaybeHandle<Code> SharedFunctionInfo::TryGetCachedCode(Isolate* isolate) {
   if (!may_have_cached_code()) return {};
-  Handle<SharedFunctionInfo> zis(*this, isolate);
-  return isolate->compilation_cache()->LookupCode(zis);
+  Handle<SharedFunctionInfo> sfi(*this, isolate);
+  MaybeHandle<Code> maybe_code;
+  MaybeHandle<SerializedFeedback> maybe_feedback;
+  isolate->compilation_cache()->LookupCode(sfi, &maybe_code, &maybe_feedback);
+  return maybe_code;
 }
 
 void SharedFunctionInfo::DisableOptimization(BailoutReason reason) {

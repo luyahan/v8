@@ -112,7 +112,8 @@ namespace internal {
   F(FunctionFirstExecution, 1, 1)         \
   F(InstantiateAsmJs, 4, 1)               \
   F(NotifyDeoptimized, 0, 1)              \
-  F(ResolvePossiblyDirectEval, 6, 1)
+  F(ResolvePossiblyDirectEval, 6, 1)      \
+  F(TryInstallNCICode, 1, 1)
 
 #define FOR_EACH_INTRINSIC_DATE(F, I) F(DateCurrentTime, 0, 1)
 
@@ -778,6 +779,8 @@ class Runtime : public AllStatic {
 
 class RuntimeState {
  public:
+  RuntimeState(const RuntimeState&) = delete;
+  RuntimeState& operator=(const RuntimeState&) = delete;
 #ifndef V8_INTL_SUPPORT
   unibrow::Mapping<unibrow::ToUppercase, 128>* to_upper_mapping() {
     return &to_upper_mapping_;
@@ -807,8 +810,6 @@ class RuntimeState {
 
   friend class Isolate;
   friend class Runtime;
-
-  DISALLOW_COPY_AND_ASSIGN(RuntimeState);
 };
 
 V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream&, Runtime::FunctionId);

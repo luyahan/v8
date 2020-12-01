@@ -369,17 +369,17 @@
   V(_, wasm_wrapped_object_symbol)                    \
   V(_, uninitialized_symbol)
 
-#define PUBLIC_SYMBOL_LIST_GENERATOR(V, _)          \
-  V(_, async_iterator_symbol, Symbol.asyncIterator) \
-  V(_, iterator_symbol, Symbol.iterator)            \
-  V(_, intl_fallback_symbol, IntlFallback)          \
-  V(_, match_all_symbol, Symbol.matchAll)           \
-  V(_, match_symbol, Symbol.match)                  \
-  V(_, replace_symbol, Symbol.replace)              \
-  V(_, search_symbol, Symbol.search)                \
-  V(_, species_symbol, Symbol.species)              \
-  V(_, split_symbol, Symbol.split)                  \
-  V(_, to_primitive_symbol, Symbol.toPrimitive)     \
+#define PUBLIC_SYMBOL_LIST_GENERATOR(V, _)                \
+  V(_, async_iterator_symbol, Symbol.asyncIterator)       \
+  V(_, iterator_symbol, Symbol.iterator)                  \
+  V(_, intl_fallback_symbol, IntlLegacyConstructedSymbol) \
+  V(_, match_all_symbol, Symbol.matchAll)                 \
+  V(_, match_symbol, Symbol.match)                        \
+  V(_, replace_symbol, Symbol.replace)                    \
+  V(_, search_symbol, Symbol.search)                      \
+  V(_, species_symbol, Symbol.species)                    \
+  V(_, split_symbol, Symbol.split)                        \
+  V(_, to_primitive_symbol, Symbol.toPrimitive)           \
   V(_, unscopables_symbol, Symbol.unscopables)
 
 // Well-Known Symbols are "Public" symbols, which have a bit set which causes
@@ -431,7 +431,6 @@
   F(MC_CLEAR_FLUSHED_JS_FUNCTIONS)                   \
   F(MC_CLEAR_MAPS)                                   \
   F(MC_CLEAR_SLOTS_BUFFER)                           \
-  F(MC_CLEAR_STORE_BUFFER)                           \
   F(MC_CLEAR_STRING_TABLE)                           \
   F(MC_CLEAR_WEAK_COLLECTIONS)                       \
   F(MC_CLEAR_WEAK_LISTS)                             \
@@ -508,10 +507,8 @@
   F(STOP_THE_WORLD)
 
 #define TRACER_BACKGROUND_SCOPES(F)               \
-  F(BACKGROUND_ARRAY_BUFFER_FREE)                 \
   F(BACKGROUND_ARRAY_BUFFER_SWEEP)                \
   F(BACKGROUND_COLLECTION)                        \
-  F(BACKGROUND_STORE_BUFFER)                      \
   F(BACKGROUND_UNMAPPER)                          \
   F(MC_BACKGROUND_EVACUATE_COPY)                  \
   F(MC_BACKGROUND_EVACUATE_UPDATE_POINTERS)       \

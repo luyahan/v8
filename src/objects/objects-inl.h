@@ -900,7 +900,7 @@ void RegExpMatchInfo::SetCapture(int i, int value) {
 }
 
 WriteBarrierMode HeapObject::GetWriteBarrierMode(
-    const DisallowHeapAllocation& promise) {
+    const DisallowGarbageCollection& promise) {
   return GetWriteBarrierModeForObject(*this, &promise);
 }
 
@@ -1024,7 +1024,7 @@ MaybeHandle<Object> Object::GetPropertyOrElement(Handle<Object> receiver,
 
 // static
 Object Object::GetSimpleHash(Object object) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   if (object.IsSmi()) {
     uint32_t hash = ComputeUnseededHash(Smi::ToInt(object));
     return Smi::FromInt(hash & Smi::kMaxValue);
@@ -1044,11 +1044,11 @@ Object Object::GetSimpleHash(Object object) {
     return Smi::FromInt(hash & Smi::kMaxValue);
   }
   if (object.IsName()) {
-    uint32_t hash = Name::cast(object).Hash();
+    uint32_t hash = Name::cast(object).EnsureHash();
     return Smi::FromInt(hash);
   }
   if (object.IsOddball()) {
-    uint32_t hash = Oddball::cast(object).to_string().Hash();
+    uint32_t hash = Oddball::cast(object).to_string().EnsureHash();
     return Smi::FromInt(hash);
   }
   if (object.IsBigInt()) {
@@ -1064,7 +1064,7 @@ Object Object::GetSimpleHash(Object object) {
 }
 
 Object Object::GetHash() {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
   Object hash = GetSimpleHash(*this);
   if (hash.IsSmi()) return hash;
 

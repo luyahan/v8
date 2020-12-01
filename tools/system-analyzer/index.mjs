@@ -5,11 +5,11 @@
 import {SourcePosition} from '../profile.mjs';
 
 import {State} from './app-model.mjs';
-import {FocusEvent, SelectionEvent, SelectTimeEvent} from './events.mjs';
-import {$} from './helper.mjs';
 import {IcLogEntry} from './log/ic.mjs';
 import {MapLogEntry} from './log/map.mjs';
 import {Processor} from './processor.mjs';
+import {FocusEvent, SelectionEvent, SelectTimeEvent, ToolTipEvent,} from './view/events.mjs';
+import {$, CSSColor} from './view/helper.mjs';
 
 class App {
   _state;
@@ -18,7 +18,7 @@ class App {
   _startupPromise;
   constructor(
       fileReaderId, mapPanelId, mapStatsPanelId, timelinePanelId, icPanelId,
-      mapTrackId, icTrackId, deoptTrackId, sourcePanelId) {
+      mapTrackId, icTrackId, deoptTrackId, sourcePanelId, toolTipId) {
     this._view = {
       __proto__: null,
       logFileReader: $(fileReaderId),
@@ -29,7 +29,8 @@ class App {
       mapTrack: $(mapTrackId),
       icTrack: $(icTrackId),
       deoptTrack: $(deoptTrackId),
-      sourcePanel: $(sourcePanelId)
+      sourcePanel: $(sourcePanelId),
+      toolTip: $(toolTipId),
     };
     this.toggleSwitch = $('.theme-switch input[type="checkbox"]');
     this.toggleSwitch.addEventListener('change', (e) => this.switchTheme(e));
@@ -42,11 +43,12 @@ class App {
 
   async runAsyncInitialize() {
     await Promise.all([
-      import('./ic-panel.mjs'),
-      import('./timeline-panel.mjs'),
-      import('./stats-panel.mjs'),
-      import('./map-panel.mjs'),
-      import('./source-panel.mjs'),
+      import('./view/ic-panel.mjs'),
+      import('./view/timeline-panel.mjs'),
+      import('./view/stats-panel.mjs'),
+      import('./view/map-panel.mjs'),
+      import('./view/source-panel.mjs'),
+      import('./view/tool-tip.mjs'),
     ]);
     document.addEventListener(
         'keydown', e => this._navigation?.handleKeyDown(e));
@@ -56,6 +58,8 @@ class App {
         FocusEvent.name, e => this.handleShowEntryDetail(e));
     document.addEventListener(
         SelectTimeEvent.name, e => this.handleTimeRangeSelect(e));
+    document.addEventListener(ToolTipEvent.name, e => this.handleToolTip(e));
+    window.addEventListener('scroll', e => console.log(e));
   }
 
   handleShowEntries(e) {
@@ -126,6 +130,11 @@ class App {
     this._view.sourcePanel.selectedSourcePositions = [sourcePositions];
   }
 
+  handleToolTip(event) {
+    this._view.toolTip.positionOrTargetNode = event.positionOrTargetNode;
+    this._view.toolTip.content = event.content;
+  }
+
   handleFileUploadStart(e) {
     this.restartApp();
     $('#container').className = 'initial';
@@ -174,9 +183,9 @@ class App {
   switchTheme(event) {
     document.documentElement.dataset.theme =
         event.target.checked ? 'light' : 'dark';
-    if (this.fileLoaded) {
-      this.refreshTimelineTrackView();
-    }
+    CSSColor.reset();
+    if (!this.fileLoaded) return;
+    this.refreshTimelineTrackView();
   }
 }
 

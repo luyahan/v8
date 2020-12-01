@@ -20,7 +20,6 @@
 #include "src/objects/js-regexp.h"
 #include "src/objects/shared-function-info.h"
 #include "src/objects/string.h"
-#include "torque-generated/class-forward-declarations.h"
 
 namespace v8 {
 namespace internal {
@@ -71,10 +70,6 @@ class WasmExportedFunctionData;
 class WasmJSFunctionData;
 class WeakCell;
 
-namespace wasm {
-class ValueType;
-}  // namespace wasm
-
 enum class SharedFlag : uint8_t;
 enum class InitializedFlag : uint8_t;
 
@@ -117,12 +112,6 @@ class V8_EXPORT_PRIVATE Factory : public FactoryBase<Factory> {
   Handle<T> MakeHandle(T obj) {
     return handle(obj, isolate());
   }
-
-#include "torque-generated/factory.inc"
-
-  // Avoid the Torque-generated factory function to shadow the one from
-  // FactoryBase.
-  using FactoryBase::NewDescriptorArray;
 
   Handle<Oddball> NewOddball(Handle<Map> map, const char* to_string,
                              Handle<Object> to_number, const char* type_of,
@@ -167,11 +156,11 @@ class V8_EXPORT_PRIVATE Factory : public FactoryBase<Factory> {
 
   Handle<FrameArray> NewFrameArray(int number_of_frames);
 
-  // Allocates a |NameDictionary| with an internal capacity calculated such that
+  // Allocates a NameDictionary with an internal capacity calculated such that
   // |at_least_space_for| entries can be added without reallocating.
   Handle<NameDictionary> NewNameDictionary(int at_least_space_for);
 
-  // Allocates an |OrderedNameDictionary| of the given capacity. This guarantees
+  // Allocates an OrderedNameDictionary of the given capacity. This guarantees
   // that |capacity| entries can be added without reallocating.
   Handle<OrderedNameDictionary> NewOrderedNameDictionary(
       int capacity = OrderedNameDictionary::kInitialCapacity);
@@ -523,7 +512,7 @@ class V8_EXPORT_PRIVATE Factory : public FactoryBase<Factory> {
   // fast elements, or a NumberDictionary, in which case the resulting
   // object will have dictionary elements.
   Handle<JSObject> NewSlowJSObjectWithPropertiesAndElements(
-      Handle<HeapObject> prototype, Handle<NameDictionary> properties,
+      Handle<HeapObject> prototype, Handle<HeapObject> properties,
       Handle<FixedArrayBase> elements);
 
   // JS arrays are pretenured when allocated by the parser.

@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "src/base/optional.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/common/assert-scope.h"
 #include "src/compiler/wasm-compiler.h"
@@ -57,31 +58,31 @@ Handle<Object> WasmValueToValueObject(Isolate* isolate, WasmValue value) {
     case ValueType::kI32: {
       int32_t val = value.to_i32();
       bytes = isolate->factory()->NewByteArray(sizeof(val));
-      memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
+      base::Memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
       break;
     }
     case ValueType::kI64: {
       int64_t val = value.to_i64();
       bytes = isolate->factory()->NewByteArray(sizeof(val));
-      memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
+      base::Memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
       break;
     }
     case ValueType::kF32: {
       float val = value.to_f32();
       bytes = isolate->factory()->NewByteArray(sizeof(val));
-      memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
+      base::Memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
       break;
     }
     case ValueType::kF64: {
       double val = value.to_f64();
       bytes = isolate->factory()->NewByteArray(sizeof(val));
-      memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
+      base::Memcpy(bytes->GetDataStartAddress(), &val, sizeof(val));
       break;
     }
     case ValueType::kS128: {
       Simd128 s128 = value.to_s128();
       bytes = isolate->factory()->NewByteArray(kSimd128Size);
-      memcpy(bytes->GetDataStartAddress(), s128.bytes(), kSimd128Size);
+      base::Memcpy(bytes->GetDataStartAddress(), s128.bytes(), kSimd128Size);
       break;
     }
     case ValueType::kOptRef: {
@@ -487,39 +488,30 @@ class DebugInfoImpl {
   void FloodWithBreakpoints(WasmFrame* frame, ReturnLocation return_location) {
     // 0 is an invalid offset used to indicate flooding.
     int offset = 0;
-    WasmCodeRefScope wasm_code_ref_scope;
     DCHECK(frame->wasm_code()->is_liftoff());
     // Generate an additional source position for the current byte offset.
     base::MutexGuard guard(&mutex_);
     WasmCode* new_code = RecompileLiftoffWithBreakpoints(
         frame->function_index(), VectorOf(&offset, 1), 0);
     UpdateReturnAddress(frame, new_code, return_location);
+
+    per_isolate_data_[frame->isolate()].stepping_frame = frame->id();
   }
 
-  void PrepareStep(Isolate* isolate, StackFrameId break_frame_id) {
-    StackTraceFrameIterator it(isolate, break_frame_id);
-    DCHECK(!it.done());
-    DCHECK(it.frame()->is_wasm());
-    WasmFrame* frame = WasmFrame::cast(it.frame());
-    StepAction step_action = isolate->debug()->last_step_action();
+  bool PrepareStep(WasmFrame* frame) {
+    WasmCodeRefScope wasm_code_ref_scope;
+    wasm::WasmCode* code = frame->wasm_code();
+    if (!code->is_liftoff()) return false;  // Cannot step in TurboFan code.
+    if (IsAtReturn(frame)) return false;    // Will return after this step.
+    FloodWithBreakpoints(frame, kAfterBreakpoint);
+    return true;
+  }
 
-    // If we are flooding the top frame, the return location is after a
-    // breakpoints. Otherwise, it's after a call.
-    ReturnLocation return_location = kAfterBreakpoint;
-
-    // If we are at a return instruction, then any stepping action is equivalent
-    // to StepOut, and we need to flood the parent function.
-    if (IsAtReturn(frame) || step_action == StepOut) {
-      it.Advance();
-      if (it.done() || !it.frame()->is_wasm()) return;
-      frame = WasmFrame::cast(it.frame());
-      return_location = kAfterWasmCall;
-    }
-
-    FloodWithBreakpoints(frame, return_location);
-
-    base::MutexGuard guard(&mutex_);
-    per_isolate_data_[isolate].stepping_frame = frame->id();
+  void PrepareStepOutTo(WasmFrame* frame) {
+    WasmCodeRefScope wasm_code_ref_scope;
+    wasm::WasmCode* code = frame->wasm_code();
+    if (!code->is_liftoff()) return;  // Cannot step out to TurboFan code.
+    FloodWithBreakpoints(frame, kAfterWasmCall);
   }
 
   void ClearStepping(Isolate* isolate) {
@@ -793,7 +785,7 @@ class DebugInfoImpl {
   }
 
   bool IsAtReturn(WasmFrame* frame) {
-    DisallowHeapAllocation no_gc;
+    DisallowGarbageCollection no_gc;
     int position = frame->position();
     NativeModule* native_module =
         frame->wasm_instance().module_object().native_module();
@@ -879,8 +871,12 @@ void DebugInfo::SetBreakpoint(int func_index, int offset,
   impl_->SetBreakpoint(func_index, offset, current_isolate);
 }
 
-void DebugInfo::PrepareStep(Isolate* isolate, StackFrameId break_frame_id) {
-  impl_->PrepareStep(isolate, break_frame_id);
+bool DebugInfo::PrepareStep(WasmFrame* frame) {
+  return impl_->PrepareStep(frame);
+}
+
+void DebugInfo::PrepareStepOutTo(WasmFrame* frame) {
+  impl_->PrepareStepOutTo(frame);
 }
 
 void DebugInfo::ClearStepping(Isolate* isolate) {
@@ -1161,7 +1157,7 @@ bool WasmScript::GetPossibleBreakpoints(
     wasm::NativeModule* native_module, const v8::debug::Location& start,
     const v8::debug::Location& end,
     std::vector<v8::debug::BreakLocation>* locations) {
-  DisallowHeapAllocation no_gc;
+  DisallowGarbageCollection no_gc;
 
   const wasm::WasmModule* module = native_module->module();
   const std::vector<wasm::WasmFunction>& functions = module->functions;

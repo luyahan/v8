@@ -93,6 +93,7 @@ namespace compiler {
   V(Arm64Poke)                              \
   V(Arm64PokePair)                          \
   V(Arm64Peek)                              \
+  V(Arm64Prfm)                              \
   V(Arm64Float32Cmp)                        \
   V(Arm64Float32Add)                        \
   V(Arm64Float32Sub)                        \
@@ -233,6 +234,7 @@ namespace compiler {
   V(Arm64I64x2Mul)                          \
   V(Arm64I64x2Eq)                           \
   V(Arm64I64x2ShrU)                         \
+  V(Arm64I64x2BitMask)                      \
   V(Arm64I32x4Splat)                        \
   V(Arm64I32x4ExtractLane)                  \
   V(Arm64I32x4ReplaceLane)                  \

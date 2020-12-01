@@ -58,7 +58,6 @@ enum InstanceType : uint16_t;
   V(PropertyArray)                     \
   V(PropertyCell)                      \
   V(PrototypeInfo)                     \
-  V(SharedFunctionInfo)                \
   V(ShortcutCandidate)                 \
   V(SmallOrderedHashMap)               \
   V(SmallOrderedHashSet)               \
@@ -68,8 +67,6 @@ enum InstanceType : uint16_t;
   V(Symbol)                            \
   V(SyntheticModule)                   \
   V(TransitionArray)                   \
-  V(UncompiledDataWithoutPreparseData) \
-  V(UncompiledDataWithPreparseData)    \
   V(WasmIndirectFunctionTable)         \
   V(WasmInstanceObject)                \
   V(WasmArray)                         \
@@ -177,10 +174,9 @@ using MapHandles = std::vector<Handle<Map>>;
 // +---------------+------------------------------------------------+
 // | TaggedPointer | [instance_descriptors]                         |
 // +****************************************************************+
-// ! TaggedPointer ! [layout_descriptors]                           !
+// ! TaggedPointer ! [layout_descriptor]                            !
 // !               ! Field is only present if compile-time flag     !
 // !               ! FLAG_unbox_double_fields is enabled            !
-// !               ! (basically on 64 bit architectures)            !
 // +****************************************************************+
 // | TaggedPointer | [dependent_code]                               |
 // +---------------+------------------------------------------------+
@@ -252,8 +248,6 @@ class Map : public HeapObject {
   // Bit field.
   //
   DECL_PRIMITIVE_ACCESSORS(bit_field, byte)
-  // Atomic accessors, used for allowlisting legitimate concurrent accesses.
-  DECL_PRIMITIVE_ACCESSORS(relaxed_bit_field, byte)
 
   // Bit positions for |bit_field|.
   struct Bits1 {

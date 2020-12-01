@@ -182,9 +182,9 @@ void ScavengerCollector::JobTask::Run(JobDelegate* delegate) {
              GCTracer::Scope::SCAVENGER_SCAVENGE_PARALLEL);
     ProcessItems(delegate, scavenger);
   } else {
-    TRACE_BACKGROUND_GC(
-        outer_->heap_->tracer(),
-        GCTracer::BackgroundScope::SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL);
+    TRACE_GC1(outer_->heap_->tracer(),
+              GCTracer::Scope::SCAVENGER_BACKGROUND_SCAVENGE_PARALLEL,
+              ThreadKind::kBackground);
     ProcessItems(delegate, scavenger);
   }
 }
@@ -237,7 +237,7 @@ ScavengerCollector::ScavengerCollector(Heap* heap)
     : isolate_(heap->isolate()), heap_(heap) {}
 
 // Remove this crashkey after chromium:1010312 is fixed.
-class ScopedFullHeapCrashKey {
+class V8_NODISCARD ScopedFullHeapCrashKey {
  public:
   explicit ScopedFullHeapCrashKey(Isolate* isolate) : isolate_(isolate) {
     isolate_->AddCrashKey(v8::CrashKeyId::kDumpType, "heap");
@@ -502,8 +502,8 @@ int ScavengerCollector::NumberOfScavengeTasks() {
   const int num_scavenge_tasks =
       static_cast<int>(heap_->new_space()->TotalCapacity()) / MB + 1;
   static int num_cores = V8::GetCurrentPlatform()->NumberOfWorkerThreads() + 1;
-  int tasks =
-      Max(1, Min(Min(num_scavenge_tasks, kMaxScavengerTasks), num_cores));
+  int tasks = std::max(
+      1, std::min({num_scavenge_tasks, kMaxScavengerTasks, num_cores}));
   if (!heap_->CanPromoteYoungAndExpandOldGeneration(
           static_cast<size_t>(tasks * Page::kPageSize))) {
     // Optimize for memory usage near the heap limit.
@@ -569,7 +569,7 @@ void Scavenger::AddPageToSweeperIfNecessary(MemoryChunk* page) {
 void Scavenger::ScavengePage(MemoryChunk* page) {
   CodePageMemoryModificationScope memory_modification_scope(page);
 
-  if (page->slot_set<OLD_TO_NEW, AccessMode::NON_ATOMIC>() != nullptr) {
+  if (page->slot_set<OLD_TO_NEW, AccessMode::ATOMIC>() != nullptr) {
     InvalidatedSlotsFilter filter = InvalidatedSlotsFilter::OldToNew(page);
     RememberedSet<OLD_TO_NEW>::IterateAndTrackEmptyBuckets(
         page,

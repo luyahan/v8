@@ -30,6 +30,44 @@ class CallDescriptor;
 
 namespace wasm {
 
+enum LiftoffCondition {
+  kEqual,
+  kUnequal,
+  kSignedLessThan,
+  kSignedLessEqual,
+  kSignedGreaterThan,
+  kSignedGreaterEqual,
+  kUnsignedLessThan,
+  kUnsignedLessEqual,
+  kUnsignedGreaterThan,
+  kUnsignedGreaterEqual
+};
+
+inline constexpr LiftoffCondition Negate(LiftoffCondition liftoff_cond) {
+  switch (liftoff_cond) {
+    case kEqual:
+      return kUnequal;
+    case kUnequal:
+      return kEqual;
+    case kSignedLessThan:
+      return kSignedGreaterEqual;
+    case kSignedLessEqual:
+      return kSignedGreaterThan;
+    case kSignedGreaterEqual:
+      return kSignedLessThan;
+    case kSignedGreaterThan:
+      return kSignedLessEqual;
+    case kUnsignedLessThan:
+      return kUnsignedGreaterEqual;
+    case kUnsignedLessEqual:
+      return kUnsignedGreaterThan;
+    case kUnsignedGreaterEqual:
+      return kUnsignedLessThan;
+    case kUnsignedGreaterThan:
+      return kUnsignedLessEqual;
+  }
+}
+
 class LiftoffAssembler : public TurboAssembler {
  public:
   // Each slot in our stack frame currently has exactly 8 bytes.
@@ -469,7 +507,7 @@ class LiftoffAssembler : public TurboAssembler {
   inline int PrepareStackFrame();
   inline void PrepareTailCall(int num_callee_stack_params,
                               int stack_param_delta);
-  inline void PatchPrepareStackFrame(int offset, int frame_size);
+  inline void PatchPrepareStackFrame(int offset);
   inline void FinishCode();
   inline void AbortCompilation();
   inline static constexpr int StaticStackFrameSize();
@@ -488,46 +526,47 @@ class LiftoffAssembler : public TurboAssembler {
   inline void StoreTaggedPointer(Register dst_addr, int32_t offset_imm,
                                  LiftoffRegister src, LiftoffRegList pinned);
   inline void Load(LiftoffRegister dst, Register src_addr, Register offset_reg,
-                   uint32_t offset_imm, LoadType type, LiftoffRegList pinned,
+                   uintptr_t offset_imm, LoadType type, LiftoffRegList pinned,
                    uint32_t* protected_load_pc = nullptr,
                    bool is_load_mem = false);
-  inline void Store(Register dst_addr, Register offset_reg, uint32_t offset_imm,
-                    LiftoffRegister src, StoreType type, LiftoffRegList pinned,
+  inline void Store(Register dst_addr, Register offset_reg,
+                    uintptr_t offset_imm, LiftoffRegister src, StoreType type,
+                    LiftoffRegList pinned,
                     uint32_t* protected_store_pc = nullptr,
                     bool is_store_mem = false);
   inline void AtomicLoad(LiftoffRegister dst, Register src_addr,
-                         Register offset_reg, uint32_t offset_imm,
+                         Register offset_reg, uintptr_t offset_imm,
                          LoadType type, LiftoffRegList pinned);
   inline void AtomicStore(Register dst_addr, Register offset_reg,
-                          uint32_t offset_imm, LiftoffRegister src,
+                          uintptr_t offset_imm, LiftoffRegister src,
                           StoreType type, LiftoffRegList pinned);
 
   inline void AtomicAdd(Register dst_addr, Register offset_reg,
-                        uint32_t offset_imm, LiftoffRegister value,
+                        uintptr_t offset_imm, LiftoffRegister value,
                         LiftoffRegister result, StoreType type);
 
   inline void AtomicSub(Register dst_addr, Register offset_reg,
-                        uint32_t offset_imm, LiftoffRegister value,
+                        uintptr_t offset_imm, LiftoffRegister value,
                         LiftoffRegister result, StoreType type);
 
   inline void AtomicAnd(Register dst_addr, Register offset_reg,
-                        uint32_t offset_imm, LiftoffRegister value,
+                        uintptr_t offset_imm, LiftoffRegister value,
                         LiftoffRegister result, StoreType type);
 
   inline void AtomicOr(Register dst_addr, Register offset_reg,
-                       uint32_t offset_imm, LiftoffRegister value,
+                       uintptr_t offset_imm, LiftoffRegister value,
                        LiftoffRegister result, StoreType type);
 
   inline void AtomicXor(Register dst_addr, Register offset_reg,
-                        uint32_t offset_imm, LiftoffRegister value,
+                        uintptr_t offset_imm, LiftoffRegister value,
                         LiftoffRegister result, StoreType type);
 
   inline void AtomicExchange(Register dst_addr, Register offset_reg,
-                             uint32_t offset_imm, LiftoffRegister value,
+                             uintptr_t offset_imm, LiftoffRegister value,
                              LiftoffRegister result, StoreType type);
 
   inline void AtomicCompareExchange(Register dst_addr, Register offset_reg,
-                                    uint32_t offset_imm,
+                                    uintptr_t offset_imm,
                                     LiftoffRegister expected,
                                     LiftoffRegister new_value,
                                     LiftoffRegister value, StoreType type);
@@ -589,7 +628,7 @@ class LiftoffAssembler : public TurboAssembler {
   inline void emit_i64_add(LiftoffRegister dst, LiftoffRegister lhs,
                            LiftoffRegister rhs);
   inline void emit_i64_addi(LiftoffRegister dst, LiftoffRegister lhs,
-                            int32_t imm);
+                            int64_t imm);
   inline void emit_i64_sub(LiftoffRegister dst, LiftoffRegister lhs,
                            LiftoffRegister rhs);
   inline void emit_i64_mul(LiftoffRegister dst, LiftoffRegister lhs,
@@ -667,11 +706,11 @@ class LiftoffAssembler : public TurboAssembler {
     }
   }
 
-  inline void emit_ptrsize_addi(Register dst, Register lhs, int32_t imm) {
+  inline void emit_ptrsize_addi(Register dst, Register lhs, intptr_t imm) {
     if (kSystemPointerSize == 8) {
       emit_i64_addi(LiftoffRegister(dst), LiftoffRegister(lhs), imm);
     } else {
-      emit_i32_addi(dst, lhs, imm);
+      emit_i32_addi(dst, lhs, static_cast<int32_t>(imm));
     }
   }
 
@@ -746,18 +785,18 @@ class LiftoffAssembler : public TurboAssembler {
   inline void emit_jump(Label*);
   inline void emit_jump(Register);
 
-  inline void emit_cond_jump(Condition, Label*, ValueType value, Register lhs,
-                             Register rhs = no_reg);
+  inline void emit_cond_jump(LiftoffCondition, Label*, ValueType value,
+                             Register lhs, Register rhs = no_reg);
   // Set {dst} to 1 if condition holds, 0 otherwise.
   inline void emit_i32_eqz(Register dst, Register src);
-  inline void emit_i32_set_cond(Condition, Register dst, Register lhs,
+  inline void emit_i32_set_cond(LiftoffCondition, Register dst, Register lhs,
                                 Register rhs);
   inline void emit_i64_eqz(Register dst, LiftoffRegister src);
-  inline void emit_i64_set_cond(Condition condition, Register dst,
+  inline void emit_i64_set_cond(LiftoffCondition condition, Register dst,
                                 LiftoffRegister lhs, LiftoffRegister rhs);
-  inline void emit_f32_set_cond(Condition condition, Register dst,
+  inline void emit_f32_set_cond(LiftoffCondition condition, Register dst,
                                 DoubleRegister lhs, DoubleRegister rhs);
-  inline void emit_f64_set_cond(Condition condition, Register dst,
+  inline void emit_f64_set_cond(LiftoffCondition condition, Register dst,
                                 DoubleRegister lhs, DoubleRegister rhs);
 
   // Optional select support: Returns false if generic code (via branches)
@@ -767,7 +806,7 @@ class LiftoffAssembler : public TurboAssembler {
                           LiftoffRegister false_value, ValueType type);
 
   inline void LoadTransform(LiftoffRegister dst, Register src_addr,
-                            Register offset_reg, uint32_t offset_imm,
+                            Register offset_reg, uintptr_t offset_imm,
                             LoadType type, LoadTransformationKind transform,
                             uint32_t* protected_load_pc);
   inline void emit_i8x16_shuffle(LiftoffRegister dst, LiftoffRegister lhs,
@@ -1234,28 +1273,28 @@ void EmitI64IndependentHalfOperation(LiftoffAssembler* assm,
 template <void (LiftoffAssembler::*op)(Register, Register, int32_t)>
 void EmitI64IndependentHalfOperationImm(LiftoffAssembler* assm,
                                         LiftoffRegister dst,
-                                        LiftoffRegister lhs, int32_t imm) {
-  // Top half of the immediate sign extended, either 0 or -1.
-  int32_t sign_extend = imm < 0 ? -1 : 0;
+                                        LiftoffRegister lhs, int64_t imm) {
+  int32_t low_word = static_cast<int32_t>(imm);
+  int32_t high_word = static_cast<int32_t>(imm >> 32);
   // If {dst.low_gp()} does not overlap with {lhs.high_gp()},
   // just first compute the lower half, then the upper half.
   if (dst.low() != lhs.high()) {
-    (assm->*op)(dst.low_gp(), lhs.low_gp(), imm);
-    (assm->*op)(dst.high_gp(), lhs.high_gp(), sign_extend);
+    (assm->*op)(dst.low_gp(), lhs.low_gp(), low_word);
+    (assm->*op)(dst.high_gp(), lhs.high_gp(), high_word);
     return;
   }
   // If {dst.high_gp()} does not overlap with {lhs.low_gp()},
   // we can compute this the other way around.
   if (dst.high() != lhs.low()) {
-    (assm->*op)(dst.high_gp(), lhs.high_gp(), sign_extend);
-    (assm->*op)(dst.low_gp(), lhs.low_gp(), imm);
+    (assm->*op)(dst.high_gp(), lhs.high_gp(), high_word);
+    (assm->*op)(dst.low_gp(), lhs.low_gp(), low_word);
     return;
   }
   // Otherwise, we need a temporary register.
   Register tmp =
       assm->GetUnusedRegister(kGpReg, LiftoffRegList::ForRegs(lhs)).gp();
-  (assm->*op)(tmp, lhs.low_gp(), imm);
-  (assm->*op)(dst.high_gp(), lhs.high_gp(), sign_extend);
+  (assm->*op)(tmp, lhs.low_gp(), low_word);
+  (assm->*op)(dst.high_gp(), lhs.high_gp(), high_word);
   assm->Move(dst.low_gp(), tmp, kWasmI32);
 }
 }  // namespace liftoff

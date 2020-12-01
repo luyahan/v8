@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "src/base/macros.h"
+#include "src/base/platform/wrappers.h"
 #include "src/codegen/label.h"
 #include "src/codegen/register-arch.h"
 #include "src/codegen/source-position.h"
@@ -385,13 +386,13 @@ class TranslatedState {
                                        std::stack<int>* worklist);
   Handle<HeapObject> InitializeObjectAt(TranslatedValue* slot);
   void InitializeCapturedObjectAt(int object_index, std::stack<int>* worklist,
-                                  const DisallowHeapAllocation& no_allocation);
+                                  const DisallowGarbageCollection& no_gc);
   void InitializeJSObjectAt(TranslatedFrame* frame, int* value_index,
                             TranslatedValue* slot, Handle<Map> map,
-                            const DisallowHeapAllocation& no_allocation);
+                            const DisallowGarbageCollection& no_gc);
   void InitializeObjectWithTaggedFieldsAt(
       TranslatedFrame* frame, int* value_index, TranslatedValue* slot,
-      Handle<Map> map, const DisallowHeapAllocation& no_allocation);
+      Handle<Map> map, const DisallowGarbageCollection& no_gc);
 
   void ReadUpdateFeedback(TranslationIterator* iterator,
                           FixedArray literal_array, FILE* trace_file);
@@ -695,12 +696,14 @@ class FrameDescription {
   void* operator new(size_t size, uint32_t frame_size) {
     // Subtracts kSystemPointerSize, as the member frame_content_ already
     // supplies the first element of the area to store the frame.
-    return malloc(size + frame_size - kSystemPointerSize);
+    return base::Malloc(size + frame_size - kSystemPointerSize);
   }
 
-  void operator delete(void* pointer, uint32_t frame_size) { free(pointer); }
+  void operator delete(void* pointer, uint32_t frame_size) {
+    base::Free(pointer);
+  }
 
-  void operator delete(void* description) { free(description); }
+  void operator delete(void* description) { base::Free(description); }
 
   uint32_t GetFrameSize() const {
     USE(frame_content_);

@@ -497,7 +497,7 @@ class V8_EXPORT_PRIVATE NativeModule final {
   WasmCode* PublishCode(std::unique_ptr<WasmCode>);
   std::vector<WasmCode*> PublishCode(Vector<std::unique_ptr<WasmCode>>);
 
-  WasmCode* AddDeserializedCode(
+  std::unique_ptr<WasmCode> AllocateDeserializedCode(
       int index, Vector<const byte> instructions, int stack_slots,
       int tagged_parameter_slots, int safepoint_table_offset,
       int handler_table_offset, int constant_pool_offset,
@@ -887,7 +887,7 @@ class V8_EXPORT_PRIVATE WasmCodeManager final {
 //    and even if we did, the resulting set of pages may be fragmented.
 //    Currently, we try and keep the number of syscalls low.
 // -  similar argument for debug time.
-class NativeModuleModificationScope final {
+class V8_NODISCARD NativeModuleModificationScope final {
  public:
   explicit NativeModuleModificationScope(NativeModule* native_module);
   ~NativeModuleModificationScope();
@@ -899,7 +899,7 @@ class NativeModuleModificationScope final {
 // {WasmCodeRefScope}s form a perfect stack. New {WasmCode} pointers generated
 // by e.g. creating new code or looking up code by its address are added to the
 // top-most {WasmCodeRefScope}.
-class V8_EXPORT_PRIVATE WasmCodeRefScope {
+class V8_EXPORT_PRIVATE V8_NODISCARD WasmCodeRefScope {
  public:
   WasmCodeRefScope();
   WasmCodeRefScope(const WasmCodeRefScope&) = delete;
