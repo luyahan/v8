@@ -21,7 +21,7 @@ namespace internal {
 
 #define ALLOCATABLE_GENERAL_REGISTERS(V) \
   V(a0)  V(a1)  V(a2)  V(a3) \
-  V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  V(t1)  V(t2) V(s7) \
+  V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  V(t1)  V(t2) V(t3) V(s7) \
   V(v0)  V(v1)
 
 #define DOUBLE_REGISTERS(V)                               \
