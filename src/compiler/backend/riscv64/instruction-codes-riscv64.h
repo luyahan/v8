@@ -197,6 +197,10 @@ namespace compiler {
   V(RiscvF64x2Min)                          \
   V(RiscvF64x2Max)                          \
   V(RiscvF64x2Eq)                           \
+  V(Riscv64I64x2SConvertI32x4Low)           \
+  V(Riscv64I64x2SConvertI32x4High)          \
+  V(Riscv64I64x2UConvertI32x4Low)           \
+  V(Riscv64I64x2UConvertI32x4High)          \
   V(RiscvF64x2Ne)                           \
   V(RiscvF64x2Lt)                           \
   V(RiscvF64x2Le)                           \
@@ -316,11 +320,9 @@ namespace compiler {
   V(RiscvS128Not)                           \
   V(RiscvS128Select)                        \
   V(RiscvS128AndNot)                        \
-  V(RiscvV32x4AnyTrue)                      \
+  V(RiscvV128AnyTrue)                       \
   V(RiscvV32x4AllTrue)                      \
-  V(RiscvV16x8AnyTrue)                      \
   V(RiscvV16x8AllTrue)                      \
-  V(RiscvV8x16AnyTrue)                      \
   V(RiscvV8x16AllTrue)                      \
   V(RiscvS32x4InterleaveRight)              \
   V(RiscvS32x4InterleaveLeft)               \
