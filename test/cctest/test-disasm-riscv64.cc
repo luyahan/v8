@@ -514,6 +514,63 @@ TEST(RV64C) {
   VERIFY_RUN();
 }
 
+TEST(RVV) {
+  SET_UP();
+  COMPARE(vsetvl(a1, a2, a3), "80d675d7       vsetvl       a1, a2,  a3");
+  COMPARE(vsetvli(t0, t1, E8, m1);
+          , "000372d7       vsetvli       t0, t1, E8, m1");
+  COMPARE(vsetvli(t0, t1, E16, m1);
+          , "008372d7       vsetvli       t0, t1, E16, m1");
+  COMPARE(vsetvli(t0, t1, E16, mf4);
+          , "00e372d7       vsetvli       t0, t1, E16, mf4");
+  COMPARE(vadd_vv(v0, v1, v2), "02208057       vadd.vv       v0, v2, v1  ");
+  COMPARE(vl(v0, t0, 0, E8, Mask), "00028007       vle8.v       v0, (t0) vm");
+  COMPARE(vs(v0, t0, 0, E8, Mask), "00028027       vse8.v       v0, (t0) vm");
+  COMPARE(vls(v0, t0, t1, E8, Mask),
+          "08628007       vlse8.v       v0, (t0), t1 vm");
+  COMPARE(vss(v0, t0, t1, E8, Mask),
+          "08628027       vsse8.v       v0, (t0), t1 vm");
+  COMPARE(vlx(v0, t0, v1, E8, Mask),
+          "0c128007       vlxei8.v       v0, (t0), v1 vm");
+  COMPARE(vsx(v0, t0, v1, E8, Mask),
+          "0c128027       vsxei8.v       v0, (t0), v1 vm");
+  COMPARE(vsu(v0, t0, v1, E8, Mask),
+          "04128027       vsuxei8.v       v0, (t0), v1 vm");
+  COMPARE(vsu(v0, t0, v1, E128, Mask),
+          "14128027       vsuxei128.v       v0, (t0), v1 vm");
+  COMPARE(vsu(v0, t0, v1, E256, Mask),
+          "1412d027       vsuxei256.v       v0, (t0), v1 vm");
+  COMPARE(vsu(v0, t0, v1, E256, NoMask),
+          "1612d027       vsuxei256.v       v0, (t0), v1 ");
+  COMPARE(vlseg2(v0, t0, 0, E8, Mask),
+          "20028007       vlseg2e8.v       v0, (t0) vm");
+  COMPARE(vlseg3(v0, t0, 0, E8, Mask),
+          "40028007       vlseg3e8.v       v0, (t0) vm");
+  COMPARE(vlsseg3(v0, t0, t1, E8, Mask),
+          "48628007       vlsseg3e8.v       v0, (t0), t1 vm");
+  COMPARE(vlxseg3(v0, t0, v1, E8, Mask),
+          "4c128007       vlxseg3ei8.v       v0, (t0), v1 vm");
+  COMPARE(vsseg2(v0, t0, 0, E8, Mask),
+          "20028027       vsseg2e8.v       v0, (t0) vm");
+  COMPARE(vsseg3(v0, t0, 0, E8, Mask),
+          "40028027       vsseg3e8.v       v0, (t0) vm");
+  COMPARE(vssseg3(v0, t0, t1, E8, Mask),
+          "48628027       vssseg3e8.v       v0, (t0), t1 vm");
+  COMPARE(vsxseg3(v0, t0, v1, E8, Mask),
+          "4c128027       vsxseg3ei8.v       v0, (t0), v1 vm");
+  COMPARE(vmv_vv(v0, v1), "5e008057       vmv.vv       v0, v1");
+  COMPARE(vslidedown_vx(v0, a1, v2),
+          "3e25c057       vslidedown.vx v0, v2, a1 ");
+  COMPARE(vslidedown_vi(v0, 5, v2), "3e22b057       vslidedown.vi v0, v2, 5 ");
+  COMPARE(vmv_xs(a1, v2), "422025d7       vmv.x.s       a1, v2");
+  COMPARE(vmv_sx(v2, a1), "4205e157       vmv.s.x       v2, a1");
+  COMPARE(vmerge_vx(v17, a1, v21), "5d55c8d7       vmerge.vxm       v17, v21, a1, v0");
+  COMPARE(vmerge_vi(v17, 17, v21), "5d58b8d7       vmerge.vim       v17, v21, -15, v0");
+  COMPARE(vmerge_vi(v17, 15, v21), "5d57b8d7       vmerge.vim       v17, v21, 15, v0");
+  COMPARE(vmerge_vv(v17, v10, v21), "5d5508d7       vmerge.vvm       v17, v21, v10, v0");
+  VERIFY_RUN();
+}
+
 /*
 TEST(Previleged) {
   SET_UP();

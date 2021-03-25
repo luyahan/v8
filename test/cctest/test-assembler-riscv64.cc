@@ -1960,6 +1960,70 @@ TEST(li_estimate) {
   }
 }
 
+TEST(RVV_ZIMM) {
+  CHECK_EQ(Assembler::GenZimm(VSew::E8, Vlmul::m1), 0b00000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E16, Vlmul::m1), 0b001000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E32, Vlmul::m1), 0b010000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E64, Vlmul::m1), 0b011000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E128, Vlmul::m1), 0b100000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E256, Vlmul::m1), 0b101000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E512, Vlmul::m1), 0b110000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E1024, Vlmul::m1), 0b111000);
+  CHECK_EQ(Assembler::GenZimm(VSew::E16, Vlmul::m2), 0b001001);
+  CHECK_EQ(Assembler::GenZimm(VSew::E32, Vlmul::m4), 0b010010);
+  CHECK_EQ(Assembler::GenZimm(VSew::E64, Vlmul::m8), 0b011011);
+  CHECK_EQ(Assembler::GenZimm(VSew::E8, Vlmul::mf4), 0b000110);
+  CHECK_EQ(Assembler::GenZimm(VSew::E128, Vlmul::mf2), 0b100111);
+  CHECK_EQ(Assembler::GenZimm(VSew::E256, Vlmul::mf4), 0b101110);
+  CHECK_EQ(Assembler::GenZimm(VSew::E512, Vlmul::mf8), 0b110101);
+}
+
+#define UTEST_RVV_VMERGE(index, value, type, expect_value_low,             \
+                         expect_value_high)                                \
+  TEST(RVV_UTEST_VMERGE_##index##value##type) {                            \
+    CcTest::InitializeVM();                                                \
+    GenAndRunTest([](MacroAssembler& assm) {                               \
+      __ vsetvlmax(t0, E128, m1);                                          \
+      __ vadd_vi(v0, index, v0);                                           \
+      __ vsetvlmax(t0, type, m1);                                          \
+      __ vmerge_vi(v1, value, v3);                                         \
+    });                                                                    \
+    __int128_t t =                                                         \
+        Simulator::current(CcTest::i_isolate())->get_vregister(v1.code()); \
+    CHECK_EQ((int64_t)t, expect_value_low);                                \
+    CHECK_EQ((int64_t)(t >> 64), expect_value_high);                       \
+  }
+
+UTEST_RVV_VMERGE(0b1, 5, E8, 5, 0)
+UTEST_RVV_VMERGE(0b11, 5, E8, 0x0505, 0)
+
+TEST(RVV_assembler) {
+  CcTest::InitializeVM();
+  GenAndRunTest([](MacroAssembler& assm) {
+    __ vsetvlmax(t0, E128, m1);
+    __ vadd_vi(v0, 0x1, v0);
+    __ vsetvlmax(t0, E8, m1);
+    __ vmerge_vi(v1, 5, v3);
+  });
+}
+
+#define TEST_VSETVL(SEW, LMUL, tail, mask)                            \
+  TEST(RVV_VSETVL_##SEW##LMUL##tail##mask) {                          \
+    CcTest::InitializeVM();                                           \
+    GenAndRunTest(                                                    \
+        [](MacroAssembler& assm) { __ vsetvli(t0, t1, SEW, LMUL); }); \
+    CHECK_EQ(Simulator::current(CcTest::i_isolate())->rvv_vtype(),    \
+             Assembler::GenZimm(SEW, LMUL));                          \
+  }
+
+TEST_VSETVL(E8, m1, tu, mu)
+TEST_VSETVL(E8, mf2, tu, mu)
+TEST_VSETVL(E32, mf4, tu, mu)
+TEST_VSETVL(E64, mf8, tu, mu)
+TEST_VSETVL(E16, m2, tu, mu)
+TEST_VSETVL(E128, m4, tu, mu)
+TEST_VSETVL(E256, m8, tu, mu)
+#undef TEST_VSETVL
 #undef __
 
 }  // namespace internal

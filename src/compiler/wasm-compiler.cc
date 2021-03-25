@@ -7965,11 +7965,22 @@ class LinkageLocationAllocator {
                                      const DoubleRegister (&fp)[kNumFpRegs])
       : allocator_(wasm::LinkageAllocator(gp, fp)) {}
 
+  template <size_t kNumGpRegs, size_t kNumFpRegs, size_t kNumVpRegs>
+  constexpr LinkageLocationAllocator(const Register (&gp)[kNumGpRegs],
+                                     const DoubleRegister (&fp)[kNumFpRegs],
+                                     const Simd128Register (&vp)[kNumVpRegs])
+      : allocator_(wasm::LinkageAllocator(gp, fp, vp)) {}
+
   LinkageLocation Next(MachineRepresentation rep) {
     MachineType type = MachineType::TypeForRepresentation(rep);
     if (IsFloatingPoint(rep)) {
       if (allocator_.CanAllocateFP(rep)) {
         int reg_code = allocator_.NextFpReg(rep);
+        return LinkageLocation::ForRegister(reg_code, type);
+      }
+    } else if (IsSimd128(rep)) {
+      if (allocator_.CanAllocateVP()) {
+        int reg_code = allocator_.NextVpReg();
         return LinkageLocation::ForRegister(reg_code, type);
       }
     } else if (allocator_.CanAllocateGP()) {
@@ -8003,8 +8014,14 @@ CallDescriptor* GetWasmCallDescriptor(
                                        fsig->parameter_count() + extra_params);
 
   // Add register and/or stack parameter(s).
+#ifdef V8_TARGET_ARCH_RISCV64
+  LinkageLocationAllocator params(wasm::kGpParamRegisters,
+                                  wasm::kFpParamRegisters,
+                                  wasm::kVpParamRegisters);
+#else
   LinkageLocationAllocator params(wasm::kGpParamRegisters,
                                   wasm::kFpParamRegisters);
+#endif
 
   // The instance object.
   locations.AddParam(params.Next(MachineRepresentation::kTaggedPointer));
@@ -8037,8 +8054,14 @@ CallDescriptor* GetWasmCallDescriptor(
   }
 
   // Add return location(s).
+#ifdef V8_TARGET_ARCH_RISCV64
+  LinkageLocationAllocator rets(wasm::kGpReturnRegisters,
+                                wasm::kFpReturnRegisters,
+                                wasm::kVpReturnRegisters);
+#else
   LinkageLocationAllocator rets(wasm::kGpReturnRegisters,
                                 wasm::kFpReturnRegisters);
+#endif
 
   int parameter_slots = params.NumStackSlots();
   if (ShouldPadArguments(parameter_slots)) parameter_slots++;
@@ -8119,8 +8142,14 @@ CallDescriptor* ReplaceTypeInCallDescriptorWith(
       (call_descriptor->GetInputLocation(call_descriptor->InputCount() - 1) ==
        LinkageLocation::ForRegister(kJSFunctionRegister.code(),
                                     MachineType::TaggedPointer()));
+#ifdef V8_TARGET_ARCH_RISCV64
+  LinkageLocationAllocator params(wasm::kGpParamRegisters,
+                                  wasm::kFpParamRegisters,
+                                  wasm::kVpParamRegisters);
+#else
   LinkageLocationAllocator params(wasm::kGpParamRegisters,
                                   wasm::kFpParamRegisters);
+#endif
   for (size_t i = 0, e = call_descriptor->ParameterCount() -
                          (has_callable_param ? 1 : 0);
        i < e; i++) {
@@ -8137,9 +8166,14 @@ CallDescriptor* ReplaceTypeInCallDescriptorWith(
     locations.AddParam(LinkageLocation::ForRegister(
         kJSFunctionRegister.code(), MachineType::TaggedPointer()));
   }
-
+#ifdef V8_TARGET_ARCH_RISCV64
+  LinkageLocationAllocator rets(wasm::kGpReturnRegisters,
+                                wasm::kFpReturnRegisters,
+                                wasm::kVpReturnRegisters);
+#else
   LinkageLocationAllocator rets(wasm::kGpReturnRegisters,
                                 wasm::kFpReturnRegisters);
+#endif
   rets.SetStackOffset(params.NumStackSlots());
   for (size_t i = 0; i < call_descriptor->ReturnCount(); i++) {
     if (call_descriptor->GetReturnType(i) == input_type) {
