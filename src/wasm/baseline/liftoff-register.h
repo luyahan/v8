@@ -125,8 +125,9 @@ static constexpr int kMaxFpRegCode =
     8 * sizeof(kLiftoffAssemblerFpCacheRegs) -
     base::bits::CountLeadingZeros(kLiftoffAssemblerFpCacheRegs) - 1;
 static constexpr int kMaxVpRegCode =
-    (int)(8 * sizeof(kLiftoffAssemblerVpCacheRegs) -
-          base::bits::CountLeadingZeros(kLiftoffAssemblerVpCacheRegs)) -
+    static_cast<int>(
+        (8 * sizeof(kLiftoffAssemblerVpCacheRegs)) -
+        base::bits::CountLeadingZeros(kLiftoffAssemblerVpCacheRegs)) -
     1;
 static constexpr int kAfterMaxLiftoffGpRegCode = kMaxGpRegCode + 1;
 static constexpr int kAfterMaxLiftoffFpRegCode =

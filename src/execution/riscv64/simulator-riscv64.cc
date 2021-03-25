@@ -120,7 +120,7 @@ class RiscvDebugger {
 };
 
 inline void UNSUPPORTED() {
-  printf("Sim: Unsupported instruction. %d\n",__LINE__);
+  printf("Sim: Unsupported instruction. %d\n", __LINE__);
   base::OS::Abort();
 }
 

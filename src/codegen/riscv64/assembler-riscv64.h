@@ -627,7 +627,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   // RVV
   static int32_t GenZimm(VSew vsew, Vlmul vlmul, TailAgnosticType tail = tu,
                          MaskAgnosticType mask = mu) {
-    return (mask << 7) | (tail << 6) | ((vsew & 0x7) << 3) | (vlmul& 0x7);
+    return (mask << 7) | (tail << 6) | ((vsew & 0x7) << 3) | (vlmul & 0x7);
   }
 
   void vsetvli(Register rd, Register rs1, VSew vsew, Vlmul vlmul,
@@ -640,7 +640,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   }
 
   inline void vsetvl(VSew vsew, Vlmul vlmul, TailAgnosticType tail = tu,
-                        MaskAgnosticType mask = mu) {
+                     MaskAgnosticType mask = mu) {
     vsetvli(zero_reg, zero_reg, vsew, vlmul, tu, mu);
   }
 
@@ -1047,7 +1047,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
 
   class VectorUnit {
    public:
-    VectorUnit(Assembler* assm) : assm_(assm) {}
+    explicit VectorUnit(Assembler* assm) : assm_(assm) {}
 
     void set(Register rd, VSew sew, Vlmul lmul) {
       if (sew != sew_ || lmul != lmul_) {
