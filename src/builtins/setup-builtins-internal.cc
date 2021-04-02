@@ -156,7 +156,9 @@ Code BuildWithCodeStubAssemblerJS(Isolate* isolate, int32_t builtin_index,
   // Canonicalize handles, so that we can share constant pool entries pointing
   // to code targets without dereferencing their handles.
   CanonicalHandleScope canonical(isolate);
-
+  if(std::string(name) == std::string("ArrayPrototypeSplice")) {
+     std::cout << name << std::endl;
+  }
   Zone zone(isolate->allocator(), ZONE_NAME, kCompressGraphZone);
   const int argc_with_recv =
       (argc == kDontAdaptArgumentsSentinel) ? 0 : argc + 1;

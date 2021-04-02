@@ -3056,6 +3056,8 @@ void TurboAssembler::Call(Handle<Code> code, RelocInfo::Mode rmode,
   bool target_is_isolate_independent_builtin =
       isolate()->builtins()->IsBuiltinHandle(code, &builtin_index) &&
       Builtins::IsIsolateIndependent(builtin_index);
+  RecordComment("Builtins");
+  RecordComment(isolate()->builtins()->name(builtin_index));
   if (target_is_isolate_independent_builtin &&
       options().use_pc_relative_calls_and_jumps) {
     int32_t code_target_index = AddCodeTarget(code);
