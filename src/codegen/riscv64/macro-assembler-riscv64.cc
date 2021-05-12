@@ -181,8 +181,8 @@ void MacroAssembler::RecordWriteField(Register object, int offset,
   }
 
   // Although the object register is tagged, the offset is relative to the start
-  // of the object, so so offset must be a multiple of kPointerSize.
-  DCHECK(IsAligned(offset, kPointerSize));
+  // of the object, so so offset must be a multiple of kSystemPointerSize.
+  DCHECK(IsAligned(offset, kTaggedSize));
 
   Add64(dst, object, Operand(offset - kHeapObjectTag));
   if (FLAG_debug_code) {
@@ -191,7 +191,7 @@ void MacroAssembler::RecordWriteField(Register object, int offset,
     BlockTrampolinePoolScope block_trampoline_pool(this);
     Label ok;
     DCHECK(!AreAliased(value, dst, scratch, object));
-    And(scratch, dst, Operand(kPointerSize - 1));
+    And(scratch, dst, Operand(kTaggedSize  - 1));
     Branch(&ok, eq, scratch, Operand(zero_reg));
     ebreak();
     bind(&ok);
@@ -1426,15 +1426,22 @@ void TurboAssembler::Scd(Register rd, const MemOperand& rs) {
   }
 }
 
-void TurboAssembler::li(Register dst, Handle<HeapObject> value, LiFlags mode) {
+
+void TurboAssembler::li(Register dst, Handle<HeapObject> value, RelocInfo::Mode rmode) {
   // TODO(jgruber,v8:8887): Also consider a root-relative load when generating
   // non-isolate-independent code. In many cases it might be cheaper than
   // embedding the relocatable value.
   if (root_array_available_ && options().isolate_independent_code) {
     IndirectLoadConstant(dst, value);
     return;
+  }else if (RelocInfo::IsCompressedEmbeddedObject(rmode)) {
+    EmbeddedObjectIndex index = AddEmbeddedObject(value);
+    DCHECK(is_uint32(index));
+    li(dst, Operand(static_cast<int>(index), rmode));
+  } else {
+    DCHECK(RelocInfo::IsFullEmbeddedObject(rmode));
+    li(dst, Operand(value.address(), rmode));
   }
-  li(dst, Operand(value), mode);
 }
 
 void TurboAssembler::li(Register dst, ExternalReference value, LiFlags mode) {
@@ -2942,9 +2949,9 @@ void TurboAssembler::LoadFromConstantsTable(Register destination,
                                             int constant_index) {
   DCHECK(RootsTable::IsImmortalImmovable(RootIndex::kBuiltinsConstantsTable));
   LoadRoot(destination, RootIndex::kBuiltinsConstantsTable);
-  Ld(destination,
-     FieldMemOperand(destination,
-                     FixedArray::kHeaderSize + constant_index * kPointerSize));
+  LoadTaggedPointerField(
+      destination, FieldMemOperand(destination, FixedArray::OffsetOfElementAt(
+                                                    constant_index)));
 }
 
 void TurboAssembler::LoadRootRelative(Register destination, int32_t offset) {
@@ -3033,8 +3040,9 @@ void TurboAssembler::Jump(Handle<Code> code, RelocInfo::Mode rmode,
     Jump(t6, cond, rs, rt);
     return;
   }
-
-  Jump(static_cast<intptr_t>(code.address()), rmode, cond, rs, rt);
+  
+  int32_t target_index = AddCodeTarget(code);
+  Jump(static_cast<intptr_t>(target_index), rmode, cond, rs, rt);
 }
 
 void TurboAssembler::Jump(const ExternalReference& reference) {
@@ -3117,7 +3125,8 @@ void TurboAssembler::Call(Handle<Code> code, RelocInfo::Mode rmode,
 
   DCHECK(RelocInfo::IsCodeTarget(rmode));
   DCHECK(code->IsExecutable());
-  Call(code.address(), rmode, cond, rs, rt);
+  int32_t target_index = AddCodeTarget(code);
+  Call(static_cast<Address>(target_index), rmode, cond, rs, rt);
 }
 
 void TurboAssembler::LoadEntryFromBuiltinIndex(Register builtin_index) {
@@ -3974,7 +3983,7 @@ void TurboAssembler::Abort(AbortReason reason) {
 }
 
 void TurboAssembler::LoadMap(Register destination, Register object) {
-  Ld(destination, FieldMemOperand(object, HeapObject::kMapOffset));
+  LoadTaggedPointerField(destination, FieldMemOperand(object, HeapObject::kMapOffset));
 }
 
 void MacroAssembler::LoadNativeContextSlot(Register dst, int index) {
@@ -4189,6 +4198,13 @@ void TurboAssembler::SmiUntag(Register dst, const MemOperand& src) {
   } else {
     DCHECK(SmiValuesAre31Bits());
     Lw(dst, src);
+    SmiUntag(dst);
+
+    if (COMPRESS_POINTERS_BOOL) {
+     Lw(dst, src);
+    } else {
+      Ld(dst, src);
+    }
     SmiUntag(dst);
   }
 }
@@ -4671,6 +4687,76 @@ void TurboAssembler::JumpCodeObject(Register code_object, JumpMode jump_mode) {
   DCHECK_EQ(JumpMode::kJump, jump_mode);
   LoadCodeObjectEntry(code_object, code_object);
   Jump(code_object);
+}
+
+void TurboAssembler::LoadTaggedPointerField(const Register& destination,
+                                            const MemOperand& field_operand) {
+  if (COMPRESS_POINTERS_BOOL) {
+    DecompressTaggedPointer(destination, field_operand);
+  } else {
+    Ld(destination, field_operand);
+  }
+}
+
+void TurboAssembler::LoadAnyTaggedField(const Register& destination,
+                                        const MemOperand& field_operand) {
+  if (COMPRESS_POINTERS_BOOL) {
+    DecompressAnyTagged(destination, field_operand);
+  } else {
+    Ld(destination, field_operand);
+  }
+}
+
+void TurboAssembler::LoadTaggedSignedField(const Register& destination,
+                                           const MemOperand& field_operand) {
+  if (COMPRESS_POINTERS_BOOL) {
+    DecompressTaggedSigned(destination, field_operand);
+  } else {
+    Ld(destination, field_operand);
+  }
+}
+
+void TurboAssembler::SmiUntagField(Register dst, const MemOperand& src) {
+  SmiUntag(dst, src);
+}
+
+void TurboAssembler::StoreTaggedField(const Register& value,
+                                      const MemOperand& dst_field_operand) {
+  if (COMPRESS_POINTERS_BOOL) {
+    Sw(value, dst_field_operand);
+  } else {
+    Sd(value, dst_field_operand);
+  }
+}
+
+void TurboAssembler::DecompressTaggedSigned(const Register& destination,
+                                            const MemOperand& field_operand) {
+  RecordComment("[ DecompressTaggedSigned");
+  Lw(destination, field_operand);
+  RecordComment("]");
+}
+
+void TurboAssembler::DecompressTaggedPointer(const Register& destination,
+                                             const MemOperand& field_operand) {
+  RecordComment("[ DecompressTaggedPointer");
+  Lw(destination, field_operand);
+  Add64(destination, kRootRegister, destination);
+  RecordComment("]");
+}
+
+void TurboAssembler::DecompressTaggedPointer(const Register& destination,
+                                             const Register& source) {
+  RecordComment("[ DecompressTaggedPointer");
+  Add64(destination, kRootRegister, Operand(source));
+  RecordComment("]");
+}
+
+void TurboAssembler::DecompressAnyTagged(const Register& destination,
+                                         const MemOperand& field_operand) {
+  RecordComment("[ DecompressAnyTagged");
+  Lw(destination, field_operand);
+  Add64(destination, kRootRegister, destination);
+  RecordComment("]");
 }
 
 }  // namespace internal

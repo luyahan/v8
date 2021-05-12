@@ -448,18 +448,36 @@ void InstructionSelector::VisitLoad(Node* node) {
     case MachineRepresentation::kWord32:
       opcode = load_rep.IsUnsigned() ? kRiscvLwu : kRiscvLw;
       break;
+#ifdef V8_COMPRESS_POINTERS
+    case MachineRepresentation::kTaggedSigned:
+      opcode = kRiscvLoadDecompressTaggedSigned;
+      break;
+    case MachineRepresentation::kTaggedPointer:
+      opcode = kRiscvLoadDecompressTaggedPointer;
+      break;
+    case MachineRepresentation::kTagged:
+      opcode = kRiscvLoadDecompressAnyTagged;
+      break;
+#else
     case MachineRepresentation::kTaggedSigned:   // Fall through.
     case MachineRepresentation::kTaggedPointer:  // Fall through.
     case MachineRepresentation::kTagged:         // Fall through.
+#endif
     case MachineRepresentation::kWord64:
       opcode = kRiscvLd;
       break;
     case MachineRepresentation::kSimd128:
       opcode = kRiscvMsaLd;
       break;
-    case MachineRepresentation::kCompressedPointer:  // Fall through.
-    case MachineRepresentation::kCompressed:         // Fall through.
-    case MachineRepresentation::kMapWord:            // Fall through.
+    case MachineRepresentation::kCompressedPointer:
+    case MachineRepresentation::kCompressed:
+#ifdef V8_COMPRESS_POINTERS
+      opcode = kRiscvLoadWordS32;
+      break;
+#else
+                                            // Fall through.
+#endif
+    case MachineRepresentation::kMapWord:  // Fall through.
     case MachineRepresentation::kNone:
       UNREACHABLE();
   }

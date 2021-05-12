@@ -157,6 +157,9 @@ class OutOfLineRecordWrite final : public OutOfLineCode {
         zone_(gen->zone()) {}
 
   void Generate() final {
+    if (COMPRESS_POINTERS_BOOL) {
+      __ DecompressTaggedPointer(value_, value_);
+    }
     __ CheckPageFlag(value_, scratch0_,
                      MemoryChunk::kPointersToHereAreInterestingMask, eq,
                      exit());
@@ -539,7 +542,7 @@ void CodeGenerator::AssembleCodeStartRegisterCheck() {
 //    3. if it is not zero then it jumps to the builtin.
 void CodeGenerator::BailoutIfDeoptimized() {
   int offset = Code::kCodeDataContainerOffset - Code::kHeaderSize;
-  __ Ld(kScratchReg, MemOperand(kJavaScriptCallCodeStartRegister, offset));
+  __ LoadTaggedPointerField(kScratchReg, MemOperand(kJavaScriptCallCodeStartRegister, offset));
   __ Lw(kScratchReg,
         FieldMemOperand(kScratchReg,
                         CodeDataContainer::kKindSpecificFlagsOffset));
@@ -658,12 +661,12 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       Register func = i.InputRegister(0);
       if (FLAG_debug_code) {
         // Check the function's context matches the context argument.
-        __ Ld(kScratchReg, FieldMemOperand(func, JSFunction::kContextOffset));
+        __ LoadTaggedPointerField(kScratchReg, FieldMemOperand(func, JSFunction::kContextOffset));
         __ Assert(eq, AbortReason::kWrongFunctionContext, cp,
                   Operand(kScratchReg));
       }
       static_assert(kJavaScriptCallCodeStartRegister == a2, "ABI mismatch");
-      __ Ld(a2, FieldMemOperand(func, JSFunction::kCodeOffset));
+      __ LoadTaggedPointerField(a2, FieldMemOperand(func, JSFunction::kCodeOffset));
       __ CallCodeObject(a2);
       RecordCallPosition(instr);
       frame_access_state()->ClearSPDelta();
@@ -820,7 +823,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
                                                    scratch0, scratch1, mode,
                                                    DetermineStubCallMode());
       __ Add64(kScratchReg, object, index);
-      __ Sd(value, MemOperand(kScratchReg));
+      __ StoreTaggedField(value, MemOperand(kScratchReg));
       if (mode > RecordWriteMode::kValueIsPointer) {
         __ JumpIfSmi(value, ool->exit());
       }
@@ -1847,7 +1850,34 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       __ Assert(eq, static_cast<AbortReason>(i.InputOperand(2).immediate()),
                 i.InputRegister(0), Operand(i.InputRegister(1)));
       break;
-
+    case kRiscvStoreCompressTagged: {
+      size_t index = 0;
+      MemOperand operand = i.MemoryOperand(&index);
+      Register value = i.InputRegister(index);
+      __ StoreTaggedField(value, operand);
+      break;
+    }
+    case kRiscvLoadDecompressTaggedSigned: {
+      CHECK(instr->HasOutput());
+      Register result = i.OutputRegister();
+      MemOperand operand = i.MemoryOperand();
+      __ DecompressTaggedSigned(result, operand);
+      break;
+    }
+    case kRiscvLoadDecompressTaggedPointer: {
+      CHECK(instr->HasOutput());
+      Register result = i.OutputRegister();
+      MemOperand operand = i.MemoryOperand();
+      __ DecompressTaggedPointer(result, operand);
+      break;
+    }
+    case kRiscvLoadDecompressAnyTagged: {
+      CHECK(instr->HasOutput());
+      Register result = i.OutputRegister();
+      MemOperand operand = i.MemoryOperand();
+      __ DecompressAnyTagged(result, operand);
+      break;
+    }
     default:
       UNIMPLEMENTED();
   }
@@ -2404,9 +2434,9 @@ void CodeGenerator::AssembleConstructFrame() {
         // Unpack the tuple into the instance and the target callable.
         // This must be done here in the codegen because it cannot be expressed
         // properly in the graph.
-        __ Ld(kJSFunctionRegister,
+        __ LoadTaggedPointerField(kJSFunctionRegister,
               FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue2Offset));
-        __ Ld(kWasmInstanceRegister,
+        __ LoadTaggedPointerField(kWasmInstanceRegister,
               FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue1Offset));
         __ Push(kWasmInstanceRegister);
         if (call_descriptor->IsWasmCapiFunction()) {
@@ -2658,8 +2688,16 @@ void CodeGenerator::AssembleMove(InstructionOperand* source,
           }
           break;
         }
-        case Constant::kCompressedHeapObject:
-          UNREACHABLE();
+        case Constant::kCompressedHeapObject: {
+          Handle<HeapObject> src_object = src.ToHeapObject();
+          RootIndex index;
+          if (IsMaterializableFromRoot(src_object, &index)) {
+            __ LoadRoot(dst, index);
+          } else {
+            __ li(dst, src_object, RelocInfo::COMPRESSED_EMBEDDED_OBJECT);
+          }
+          break;
+        }
         case Constant::kRpoNumber:
           UNREACHABLE();  // TODO(titzer): loading RPO numbers
           break;

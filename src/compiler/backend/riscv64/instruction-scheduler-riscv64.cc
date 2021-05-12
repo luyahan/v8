@@ -377,6 +377,10 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kRiscvWord64AtomicLoadUint16:
     case kRiscvWord64AtomicLoadUint32:
     case kRiscvWord64AtomicLoadUint64:
+    case kRiscvStoreCompressTagged:
+    case kRiscvLoadDecompressTaggedSigned:
+    case kRiscvLoadDecompressTaggedPointer:
+    case kRiscvLoadDecompressAnyTagged:
 
       return kIsLoadOperation;
 
