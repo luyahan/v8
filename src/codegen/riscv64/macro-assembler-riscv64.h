@@ -189,8 +189,8 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   }
 
   inline void Move(Register output, MemOperand operand) { Ld(output, operand); }
-
-  void li(Register dst, Handle<HeapObject> value, LiFlags mode = OPTIMIZE_SIZE);
+  void li(Register dst, Handle<HeapObject> value,
+          RelocInfo::Mode rmode = RelocInfo::FULL_EMBEDDED_OBJECT);
   void li(Register dst, ExternalReference value, LiFlags mode = OPTIMIZE_SIZE);
   void li(Register dst, const StringConstantBase* string,
           LiFlags mode = OPTIMIZE_SIZE);
@@ -457,11 +457,11 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
 
   void SmiUntag(Register dst, const MemOperand& src);
   void SmiUntag(Register dst, Register src) {
-    if (SmiValuesAre32Bits()) {
-      srai(dst, src, kSmiShift);
-    } else {
-      DCHECK(SmiValuesAre31Bits());
+    DCHECK(SmiValuesAre32Bits() || SmiValuesAre31Bits());
+    if (COMPRESS_POINTERS_BOOL) {
       sraiw(dst, src, kSmiShift);
+    } else {
+      srai(dst, src, kSmiShift);
     }
   }
 
@@ -850,6 +850,39 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
   void ExceptionHandler() {}
   // Define an exception handler and bind a label.
   void BindExceptionHandler(Label* label) { bind(label); }
+
+  // ---------------------------------------------------------------------------
+  // Pointer compression Support
+
+  // Loads a field containing a HeapObject and decompresses it if pointer
+  // compression is enabled.
+  void LoadTaggedPointerField(const Register& destination,
+                              const MemOperand& field_operand);
+
+  // Loads a field containing any tagged value and decompresses it if necessary.
+  void LoadAnyTaggedField(const Register& destination,
+                          const MemOperand& field_operand);
+
+  // Loads a field containing a tagged signed value and decompresses it if
+  // necessary.
+  void LoadTaggedSignedField(const Register& destination,
+                             const MemOperand& field_operand);
+
+  // Loads a field containing smi value and untags it.
+  void SmiUntagField(Register dst, const MemOperand& src);
+
+  // Compresses and stores tagged value to given on-heap location.
+  void StoreTaggedField(const Register& value,
+                        const MemOperand& dst_field_operand);
+
+  void DecompressTaggedSigned(const Register& destination,
+                              const MemOperand& field_operand);
+  void DecompressTaggedPointer(const Register& destination,
+                               const MemOperand& field_operand);
+  void DecompressTaggedPointer(const Register& destination,
+                               const Register& source);
+  void DecompressAnyTagged(const Register& destination,
+                           const MemOperand& field_operand);
 
  protected:
   inline Register GetRtAsRegisterHelper(const Operand& rt, Register scratch);
