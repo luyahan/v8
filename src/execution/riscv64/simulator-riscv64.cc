@@ -402,24 +402,24 @@ void RiscvDebugger::Debug() {
         }
         end = cur + words;
 
-        while (cur < end) {
-          PrintF("  0x%012" PRIxPTR " :  0x%016" PRIx64 "  %14" PRId64 " ",
-                 reinterpret_cast<intptr_t>(cur), *cur, *cur);
-          Object obj(*cur);
-          Heap* current_heap = sim_->isolate_->heap();
-          if (obj.IsSmi() ||
-              IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
-            PrintF(" (");
-            if (obj.IsSmi()) {
-              PrintF("smi %d", Smi::ToInt(obj));
-            } else {
-              obj.ShortPrint();
-            }
-            PrintF(")");
+          while (cur < end) {
+            PrintF("  0x%012" PRIxPTR " :  0x%016" PRIx64 "  %14" PRId64 " ",
+                   reinterpret_cast<intptr_t>(cur), *cur, *cur);
+            // Object obj(*cur);
+            // Heap* current_heap = sim_->isolate_->heap();
+            // if (obj.IsSmi() ||
+            //     IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
+            //   PrintF(" (");
+            //   if (obj.IsSmi()) {
+            //     PrintF("smi %d", Smi::ToInt(obj));
+            //   } else {
+            //     obj.ShortPrint();
+            //   }
+            //   PrintF(")");
+            // }
+            PrintF("\n");
+            cur++;
           }
-          PrintF("\n");
-          cur++;
-        }
 
       } else if ((strcmp(cmd, "disasm") == 0) || (strcmp(cmd, "dpc") == 0) ||
                  (strcmp(cmd, "di") == 0)) {
@@ -3394,8 +3394,8 @@ void Simulator::InstructionDecode(Instruction* instr) {
     // Use a reasonably large buffer.
     dasm.InstructionDecode(buffer, reinterpret_cast<byte*>(instr));
 
-    // PrintF("EXECUTING  0x%08" PRIxPTR "   %-44s\n",
-    //       reinterpret_cast<intptr_t>(instr), buffer.begin());
+    PrintF("EXECUTING  0x%08" PRIxPTR "   %-44s\n",
+          reinterpret_cast<intptr_t>(instr), buffer.begin());
   }
 
   instr_ = instr;

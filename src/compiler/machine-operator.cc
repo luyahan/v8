@@ -7,7 +7,7 @@
 #include "src/base/lazy-instance.h"
 #include "src/compiler/opcodes.h"
 #include "src/compiler/operator.h"
-
+#include "src/compiler/backend/instruction-codes.h"
 namespace v8 {
 namespace internal {
 namespace compiler {
@@ -132,6 +132,7 @@ LoadRepresentation LoadRepresentationOf(Operator const* op) {
 
 StoreRepresentation const& StoreRepresentationOf(Operator const* op) {
   DCHECK(IrOpcode::kStore == op->opcode() ||
+         IrOpcode::kUnalignedStore == op->opcode() ||
          IrOpcode::kProtectedStore == op->opcode());
   return OpParameter<StoreRepresentation>(op);
 }
