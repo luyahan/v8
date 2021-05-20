@@ -157,7 +157,7 @@ void Builtins::Generate_JSConstructStubGeneric(MacroAssembler* masm) {
 
   // If not derived class constructor: Allocate the new receiver object.
   __ IncrementCounter(masm->isolate()->counters()->constructed_objects(), 1, t2,
-                      t4);
+                      t0);
   __ Call(BUILTIN_CODE(masm->isolate(), FastNewObject), RelocInfo::CODE_TARGET);
   __ Branch(&post_instantiation_deopt_entry);
 
@@ -382,12 +382,12 @@ void Builtins::Generate_ResumeGeneratorTrampoline(MacroAssembler* masm) {
     __ Sub64(a3, a3, Operand(1));
     __ Branch(&done_loop, lt, a3, Operand(zero_reg));
     __ CalcScaledAddress(kScratchReg, t1, a3, kTaggedSizeLog2);
-    __ Ld(kScratchReg, FieldMemOperand(kScratchReg, FixedArray::kHeaderSize));
+    __ LoadAnyTaggedField(kScratchReg, FieldMemOperand(kScratchReg, FixedArray::kHeaderSize));
     __ Push(kScratchReg);
     __ Branch(&loop);
     __ bind(&done_loop);
     // Push receiver.
-    __ Ld(kScratchReg, FieldMemOperand(a1, JSGeneratorObject::kReceiverOffset));
+    __ LoadAnyTaggedField(kScratchReg, FieldMemOperand(a1, JSGeneratorObject::kReceiverOffset));
     __ Push(kScratchReg);
   }
 
@@ -517,6 +517,12 @@ void Generate_JSEntryVariant(MacroAssembler* masm, StackFrame::Type type,
     // Initialize the root register.
     // C calling convention. The first argument is passed in a0.
     __ Move(kRootRegister, a0);
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+    // Initialize the pointer cage base register.
+    __ LoadRootRelative(kPtrComprCageBaseRegister,
+                        IsolateData::cage_base_offset());
+#endif
   }
 
   // a1: entry address
@@ -733,6 +739,9 @@ static void Generate_JSEntryTrampolineHelper(MacroAssembler* masm,
     __ Move(s3, a4);
     __ Move(s4, a4);
     __ Move(s5, a4);
+#ifndef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+    __ Move(t0, a4);
+#endif
     // s6 holds the root address. Do not clobber.
     // s7 is cp. Do not init.
 
@@ -1004,10 +1013,10 @@ static void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
 
   __ bind(&maybe_has_optimized_code);
   Register optimized_code_entry = optimization_state;
-  __ Ld(optimization_marker,
+  __ LoadAnyTaggedField(optimization_marker,
         FieldMemOperand(feedback_vector,
                         FeedbackVector::kMaybeOptimizedCodeOffset));
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, a5);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, a5);
 }
 
 // static
@@ -1373,7 +1382,7 @@ void Builtins::Generate_InterpreterEntryTrampoline(MacroAssembler* masm) {
         FieldMemOperand(feedback_vector,
                         FeedbackVector::kMaybeOptimizedCodeOffset));
 
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, a5);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, a5);
   __ bind(&is_baseline);
   {
     // Load the feedback vector from the closure.
@@ -1768,7 +1777,7 @@ void Builtins::Generate_NotifyDeoptimized(MacroAssembler* masm) {
 
 void Builtins::Generate_TailCallOptimizedCodeSlot(MacroAssembler* masm) {
   Register optimized_code_entry = kJavaScriptCallCodeStartRegister;
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, t0);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, t1);
 }
 namespace {
 
@@ -2116,7 +2125,7 @@ void Builtins::Generate_CallOrConstructVarargs(MacroAssembler* masm,
     __ bind(&push);
     __ Sd(a5, MemOperand(a7, 0));
     __ Add64(a7, a7, Operand(kSystemPointerSize));
-    __ Add64(scratch, scratch, Operand(kSystemPointerSize));
+    __ Add64(scratch, scratch, Operand(kTaggedSize));
     __ Branch(&loop, ne, scratch, Operand(sp));
     __ bind(&done);
   }
@@ -2337,12 +2346,12 @@ void Builtins::Generate_CallBoundFunctionImpl(MacroAssembler* masm) {
 
   // Patch the receiver to [[BoundThis]].
   {
-    __ LoadTaggedPointerField(t0, FieldMemOperand(a1, JSBoundFunction::kBoundThisOffset));
+    __ LoadAnyTaggedField(t0, FieldMemOperand(a1, JSBoundFunction::kBoundThisOffset));
     __ StoreReceiver(t0, a0, kScratchReg);
   }
 
   // Load [[BoundArguments]] into a2 and length of that into a4.
-  __ Ld(a2, FieldMemOperand(a1, JSBoundFunction::kBoundArgumentsOffset));
+  __ LoadTaggedPointerField(a2, FieldMemOperand(a1, JSBoundFunction::kBoundArgumentsOffset));
   __ SmiUntag(a4, FieldMemOperand(a2, FixedArray::kLengthOffset));
 
   // ----------- S t a t e -------------
@@ -2383,7 +2392,7 @@ void Builtins::Generate_CallBoundFunctionImpl(MacroAssembler* masm) {
     __ Sub64(a4, a4, Operand(1));
     __ Branch(&done_loop, lt, a4, Operand(zero_reg));
     __ CalcScaledAddress(a5, a2, a4, kTaggedSizeLog2);
-    __ Ld(kScratchReg, MemOperand(a5));
+    __ LoadAnyTaggedField(kScratchReg, MemOperand(a5));
     __ Push(kScratchReg);
     __ Branch(&loop);
     __ bind(&done_loop);
@@ -2409,9 +2418,9 @@ void Builtins::Generate_Call(MacroAssembler* masm, ConvertReceiverMode mode) {
   __ JumpIfSmi(a1, &non_callable);
   __ bind(&non_smi);
   __ LoadMap(t1, a1);
-  __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t4);
+  __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t0);
   __ Jump(masm->isolate()->builtins()->CallFunction(mode),
-          RelocInfo::CODE_TARGET, Uless_equal, t4,
+          RelocInfo::CODE_TARGET, Uless_equal, t0,
           Operand(LAST_JS_FUNCTION_TYPE - FIRST_JS_FUNCTION_TYPE));
   __ Jump(BUILTIN_CODE(masm->isolate(), CallBoundFunction),
           RelocInfo::CODE_TARGET, eq, t2, Operand(JS_BOUND_FUNCTION_TYPE));
@@ -2562,9 +2571,9 @@ void Builtins::Generate_Construct(MacroAssembler* masm) {
 
   // Check if target has a [[Construct]] internal method.
   __ LoadTaggedPointerField(t1, FieldMemOperand(a1, HeapObject::kMapOffset));
-  __ Lbu(t4, FieldMemOperand(t1, Map::kBitFieldOffset));
-  __ And(t4, t4, Operand(Map::Bits1::IsConstructorBit::kMask));
-  __ Branch(&non_constructor, eq, t4, Operand(zero_reg));
+  __ Lbu(t0, FieldMemOperand(t1, Map::kBitFieldOffset));
+  __ And(t0, t0, Operand(Map::Bits1::IsConstructorBit::kMask));
+  __ Branch(&non_constructor, eq, t0, Operand(zero_reg));
 
   // Dispatch based on instance type.
   __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t0);
@@ -3213,7 +3222,7 @@ void Builtins::Generate_CallApiGetter(MacroAssembler* masm) {
   using PCA = PropertyCallbackArguments;
   __ Sub64(sp, sp, (PCA::kArgsLength + 1) * kSystemPointerSize);
   __ Sd(receiver, MemOperand(sp, (PCA::kThisIndex + 1) * kSystemPointerSize));
-  __ Ld(scratch, FieldMemOperand(callback, AccessorInfo::kDataOffset));
+  __ LoadAnyTaggedField(scratch, FieldMemOperand(callback, AccessorInfo::kDataOffset));
   __ Sd(scratch, MemOperand(sp, (PCA::kDataIndex + 1) * kSystemPointerSize));
   __ LoadRoot(scratch, RootIndex::kUndefinedValue);
   __ Sd(scratch, MemOperand(sp, (PCA::kReturnValueOffset + 1) * kSystemPointerSize));

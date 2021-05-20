@@ -472,7 +472,7 @@ void InstructionSelector::VisitLoad(Node* node) {
     case MachineRepresentation::kCompressedPointer:
     case MachineRepresentation::kCompressed:
 #ifdef V8_COMPRESS_POINTERS
-      opcode = kRiscvLoadWordS32;
+      opcode = kRiscvLw;
       break;
 #else
                                             // Fall through.
@@ -543,7 +543,11 @@ void InstructionSelector::VisitStore(Node* node) {
         break;
       case MachineRepresentation::kTaggedSigned:   // Fall through.
       case MachineRepresentation::kTaggedPointer:  // Fall through.
-      case MachineRepresentation::kTagged:         // Fall through.
+      case MachineRepresentation::kTagged:
+#ifdef V8_COMPRESS_POINTERS
+        opcode = kRiscvStoreCompressTagged;
+        break;
+#endif
       case MachineRepresentation::kWord64:
         opcode = kRiscvSd;
         break;
@@ -551,7 +555,14 @@ void InstructionSelector::VisitStore(Node* node) {
         opcode = kRiscvMsaSt;
         break;
       case MachineRepresentation::kCompressedPointer:  // Fall through.
-      case MachineRepresentation::kCompressed:         // Fall through.
+      case MachineRepresentation::kCompressed:
+#ifdef V8_COMPRESS_POINTERS
+        opcode = kRiscvStoreCompressTagged;
+        break;
+#else
+        UNREACHABLE();
+        break;
+#endif
       case MachineRepresentation::kMapWord:            // Fall through.
       case MachineRepresentation::kNone:
         UNREACHABLE();
@@ -1229,7 +1240,11 @@ void InstructionSelector::VisitTryTruncateFloat64ToUint64(Node* node) {
 }
 
 void InstructionSelector::VisitBitcastWord32ToWord64(Node* node) {
-  UNIMPLEMENTED();
+  DCHECK(SmiValuesAre31Bits());
+  DCHECK(COMPRESS_POINTERS_BOOL);
+  RiscvOperandGenerator g(this);
+  Emit(kRiscvZeroExtendWord, g.DefineAsRegister(node),
+       g.UseRegister(node->InputAt(0)));
 }
 
 void InstructionSelector::VisitChangeInt32ToInt64(Node* node) {
@@ -1836,30 +1851,30 @@ void VisitFullWord32Compare(InstructionSelector* selector, Node* node,
 void VisitOptimizedWord32Compare(InstructionSelector* selector, Node* node,
                                  InstructionCode opcode,
                                  FlagsContinuation* cont) {
-  if (FLAG_debug_code) {
-    RiscvOperandGenerator g(selector);
-    InstructionOperand leftOp = g.TempRegister();
-    InstructionOperand rightOp = g.TempRegister();
-    InstructionOperand optimizedResult = g.TempRegister();
-    InstructionOperand fullResult = g.TempRegister();
-    FlagsCondition condition = cont->condition();
-    InstructionCode testOpcode = opcode |
-                                 FlagsConditionField::encode(condition) |
-                                 FlagsModeField::encode(kFlags_set);
+  // if (FLAG_debug_code) {
+  //   RiscvOperandGenerator g(selector);
+  //   InstructionOperand leftOp = g.TempRegister();
+  //   InstructionOperand rightOp = g.TempRegister();
+  //   InstructionOperand optimizedResult = g.TempRegister();
+  //   InstructionOperand fullResult = g.TempRegister();
+  //   FlagsCondition condition = cont->condition();
+  //   InstructionCode testOpcode = opcode |
+  //                                FlagsConditionField::encode(condition) |
+  //                                FlagsModeField::encode(kFlags_set);
 
-    selector->Emit(testOpcode, optimizedResult, g.UseRegister(node->InputAt(0)),
-                   g.UseRegister(node->InputAt(1)));
+  //   selector->Emit(testOpcode, optimizedResult, g.UseRegister(node->InputAt(0)),
+  //                  g.UseRegister(node->InputAt(1)));
 
-    selector->Emit(kRiscvShl64, leftOp, g.UseRegister(node->InputAt(0)),
-                   g.TempImmediate(32));
-    selector->Emit(kRiscvShl64, rightOp, g.UseRegister(node->InputAt(1)),
-                   g.TempImmediate(32));
-    selector->Emit(testOpcode, fullResult, leftOp, rightOp);
+  //   selector->Emit(kRiscvShl64, leftOp, g.UseRegister(node->InputAt(0)),
+  //                  g.TempImmediate(32));
+  //   selector->Emit(kRiscvShl64, rightOp, g.UseRegister(node->InputAt(1)),
+  //                  g.TempImmediate(32));
+  //   selector->Emit(testOpcode, fullResult, leftOp, rightOp);
 
-    selector->Emit(kRiscvAssertEqual, g.NoOutput(), optimizedResult, fullResult,
-                   g.TempImmediate(static_cast<int>(
-                       AbortReason::kUnsupportedNonPrimitiveCompare)));
-  }
+  //   selector->Emit(kRiscvAssertEqual, g.NoOutput(), optimizedResult, fullResult,
+  //                  g.TempImmediate(static_cast<int>(
+  //                      AbortReason::kUnsupportedNonPrimitiveCompare)));
+  // }
 
   VisitWordCompare(selector, node, opcode, cont, false);
 }

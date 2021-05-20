@@ -19,9 +19,20 @@ namespace internal {
   V(a6)  V(a7)  V(s2)  V(s3)  V(s4)  V(s5)  V(s6)  V(s7)  V(s8)  V(s9)  \
   V(s10)  V(s11)  V(t3)  V(t4)  V(t5)  V(t6)
 
-#define ALLOCATABLE_GENERAL_REGISTERS(V)  \
+#define ALWAYS_ALLOCATABLE_GENERAL_REGISTERS(V)  \
   V(a0)  V(a1)  V(a2)  V(a3)              \
-  V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  V(t1) V(t2) V(s7) V(t4)
+  V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  V(t1) V(t2) V(s7)
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+#define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V)
+#else
+#define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V) V(t4)
+#endif
+
+
+#define ALLOCATABLE_GENERAL_REGISTERS(V)  \
+  ALWAYS_ALLOCATABLE_GENERAL_REGISTERS(V) \
+  MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V)
 
 #define DOUBLE_REGISTERS(V)                                       \
   V(ft0)  V(ft1)  V(ft2)  V(ft3)  V(ft4)  V(ft5)  V(ft6)  V(ft7)  \
@@ -345,6 +356,12 @@ constexpr Register kWasmInstanceRegister = a0;
 constexpr Register kWasmCompileLazyFuncIndexRegister = t0;
 
 constexpr DoubleRegister kFPReturnRegister0 = fa0;
+
+#ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
+constexpr Register kPtrComprCageBaseRegister = t4;  // callee save
+#else
+constexpr Register kPtrComprCageBaseRegister = kRootRegister;
+#endif
 
 }  // namespace internal
 }  // namespace v8
