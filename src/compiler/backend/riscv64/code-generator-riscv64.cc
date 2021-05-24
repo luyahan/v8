@@ -137,7 +137,6 @@ class RiscvOperandConverter final : public InstructionOperandConverter {
 static inline bool HasRegisterInput(Instruction* instr, size_t index) {
   return instr->InputAt(index)->IsRegister();
 }
-
 namespace {
 
 class OutOfLineRecordWrite final : public OutOfLineCode {
@@ -542,7 +541,8 @@ void CodeGenerator::AssembleCodeStartRegisterCheck() {
 //    3. if it is not zero then it jumps to the builtin.
 void CodeGenerator::BailoutIfDeoptimized() {
   int offset = Code::kCodeDataContainerOffset - Code::kHeaderSize;
-  __ LoadTaggedPointerField(kScratchReg, MemOperand(kJavaScriptCallCodeStartRegister, offset));
+  __ LoadTaggedPointerField(
+      kScratchReg, MemOperand(kJavaScriptCallCodeStartRegister, offset));
   __ Lw(kScratchReg,
         FieldMemOperand(kScratchReg,
                         CodeDataContainer::kKindSpecificFlagsOffset));
@@ -661,12 +661,14 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       Register func = i.InputRegister(0);
       if (FLAG_debug_code) {
         // Check the function's context matches the context argument.
-        __ LoadTaggedPointerField(kScratchReg, FieldMemOperand(func, JSFunction::kContextOffset));
+        __ LoadTaggedPointerField(
+            kScratchReg, FieldMemOperand(func, JSFunction::kContextOffset));
         __ Assert(eq, AbortReason::kWrongFunctionContext, cp,
                   Operand(kScratchReg));
       }
       static_assert(kJavaScriptCallCodeStartRegister == a2, "ABI mismatch");
-      __ LoadTaggedPointerField(a2, FieldMemOperand(func, JSFunction::kCodeOffset));
+      __ LoadTaggedPointerField(a2,
+                                FieldMemOperand(func, JSFunction::kCodeOffset));
       __ CallCodeObject(a2);
       RecordCallPosition(instr);
       frame_access_state()->ClearSPDelta();
@@ -1853,8 +1855,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kRiscvStoreCompressTagged: {
       size_t index = 0;
       MemOperand operand = i.MemoryOperand(&index);
-      Register value = i.InputRegister(index);
-      __ StoreTaggedField(value, operand);
+      __ StoreTaggedField(i.InputOrZeroRegister(index), operand);
       break;
     }
     case kRiscvLoadDecompressTaggedSigned: {
@@ -2434,10 +2435,12 @@ void CodeGenerator::AssembleConstructFrame() {
         // Unpack the tuple into the instance and the target callable.
         // This must be done here in the codegen because it cannot be expressed
         // properly in the graph.
-        __ LoadTaggedPointerField(kJSFunctionRegister,
-              FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue2Offset));
-        __ LoadTaggedPointerField(kWasmInstanceRegister,
-              FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue1Offset));
+        __ LoadTaggedPointerField(
+            kJSFunctionRegister,
+            FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue2Offset));
+        __ LoadTaggedPointerField(
+            kWasmInstanceRegister,
+            FieldMemOperand(kWasmInstanceRegister, Tuple2::kValue1Offset));
         __ Push(kWasmInstanceRegister);
         if (call_descriptor->IsWasmCapiFunction()) {
           // Reserve space for saving the PC later.

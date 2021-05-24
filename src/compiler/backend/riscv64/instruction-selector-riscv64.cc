@@ -475,7 +475,7 @@ void InstructionSelector::VisitLoad(Node* node) {
       opcode = kRiscvLw;
       break;
 #else
-                                            // Fall through.
+                                                 // Fall through.
 #endif
     case MachineRepresentation::kMapWord:  // Fall through.
     case MachineRepresentation::kNone:
@@ -1817,7 +1817,7 @@ void VisitWordCompare(InstructionSelector* selector, Node* node,
                  cont);
   }
 }
-
+#ifndef V8_COMPRESS_POINTERS
 bool IsNodeUnsigned(Node* n) {
   NodeMatcher m(n);
 
@@ -1832,6 +1832,7 @@ bool IsNodeUnsigned(Node* n) {
            m.IsTruncateFloat64ToUint32() || m.IsTruncateFloat32ToUint32();
   }
 }
+#endif
 
 // Shared routine for multiple word compare operations.
 void VisitFullWord32Compare(InstructionSelector* selector, Node* node,
@@ -1908,7 +1909,7 @@ void VisitWord32Compare(InstructionSelector* selector, Node* node,
 #endif
     VisitFullWord32Compare(selector, node, kRiscvCmp, cont);
   } else {
-    VisitFullWord32Compare(selector, node, kRiscvCmp, cont);
+    VisitOptimizedWord32Compare(selector, node, kRiscvCmp, cont);
   }
 #else
   VisitFullWord32Compare(selector, node, kRiscvCmp, cont);

@@ -423,9 +423,9 @@ namespace compiler {
   V(RiscvWord64AtomicCompareExchangeUint16) \
   V(RiscvWord64AtomicCompareExchangeUint32) \
   V(RiscvWord64AtomicCompareExchangeUint64) \
-  V(RiscvStoreCompressTagged)         \
-  V(RiscvLoadDecompressTaggedSigned)  \
-  V(RiscvLoadDecompressTaggedPointer) \
+  V(RiscvStoreCompressTagged)               \
+  V(RiscvLoadDecompressTaggedSigned)        \
+  V(RiscvLoadDecompressTaggedPointer)       \
   V(RiscvLoadDecompressAnyTagged)
 
 // Addressing modes represent the "shape" of inputs to an instruction.

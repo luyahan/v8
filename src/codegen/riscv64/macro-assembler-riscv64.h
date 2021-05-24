@@ -387,7 +387,9 @@ class V8_EXPORT_PRIVATE TurboAssembler : public TurboAssemblerBase {
     Add64(sp, sp, 3 * kSystemPointerSize);
   }
 
-  void Pop(uint32_t count = 1) { Add64(sp, sp, Operand(count * kSystemPointerSize)); }
+  void Pop(uint32_t count = 1) {
+    Add64(sp, sp, Operand(count * kSystemPointerSize));
+  }
 
   // Pops multiple values from the stack and load them in the
   // registers specified in regs. Pop order is the opposite as in MultiPush.

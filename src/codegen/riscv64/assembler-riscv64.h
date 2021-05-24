@@ -266,7 +266,6 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   inline Handle<HeapObject> compressed_embedded_object_handle_at(
       Address pc, Address constant_pool);
 
-
   static bool IsConstantPoolAt(Instruction* instr);
   static int ConstantPoolSizeAt(Instruction* instr);
   // See Assembler::CheckConstPool for more info.

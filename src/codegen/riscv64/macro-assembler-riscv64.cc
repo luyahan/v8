@@ -191,7 +191,7 @@ void MacroAssembler::RecordWriteField(Register object, int offset,
     BlockTrampolinePoolScope block_trampoline_pool(this);
     Label ok;
     DCHECK(!AreAliased(value, dst, scratch, object));
-    And(scratch, dst, Operand(kTaggedSize  - 1));
+    And(scratch, dst, Operand(kTaggedSize - 1));
     Branch(&ok, eq, scratch, Operand(zero_reg));
     ebreak();
     bind(&ok);
@@ -1402,15 +1402,15 @@ void TurboAssembler::Scd(Register rd, const MemOperand& rs) {
   }
 }
 
-
-void TurboAssembler::li(Register dst, Handle<HeapObject> value, RelocInfo::Mode rmode) {
+void TurboAssembler::li(Register dst, Handle<HeapObject> value,
+                        RelocInfo::Mode rmode) {
   // TODO(jgruber,v8:8887): Also consider a root-relative load when generating
   // non-isolate-independent code. In many cases it might be cheaper than
   // embedding the relocatable value.
   if (root_array_available_ && options().isolate_independent_code) {
     IndirectLoadConstant(dst, value);
     return;
-  }else if (RelocInfo::IsCompressedEmbeddedObject(rmode)) {
+  } else if (RelocInfo::IsCompressedEmbeddedObject(rmode)) {
     EmbeddedObjectIndex index = AddEmbeddedObject(value);
     DCHECK(is_uint32(index));
     li(dst, Operand(static_cast<int>(index), rmode));
@@ -1516,7 +1516,7 @@ void TurboAssembler::MultiPush(RegList regs) {
 
 #define TEST_AND_PUSH_REG(reg)             \
   if ((regs & reg.bit()) != 0) {           \
-    stack_offset -= kSystemPointerSize;          \
+    stack_offset -= kSystemPointerSize;    \
     Sd(reg, MemOperand(sp, stack_offset)); \
     regs &= ~reg.bit();                    \
   }
@@ -1560,7 +1560,7 @@ void TurboAssembler::MultiPop(RegList regs) {
 #define TEST_AND_POP_REG(reg)              \
   if ((regs & reg.bit()) != 0) {           \
     Ld(reg, MemOperand(sp, stack_offset)); \
-    stack_offset += kSystemPointerSize;          \
+    stack_offset += kSystemPointerSize;    \
     regs &= ~reg.bit();                    \
   }
 
@@ -3016,7 +3016,7 @@ void TurboAssembler::Jump(Handle<Code> code, RelocInfo::Mode rmode,
     Jump(t6, cond, rs, rt);
     return;
   }
-  
+
   int32_t target_index = AddCodeTarget(code);
   Jump(static_cast<intptr_t>(target_index), rmode, cond, rs, rt);
 }
@@ -3387,8 +3387,8 @@ void MacroAssembler::PopStackHandler() {
   STATIC_ASSERT(StackHandlerConstants::kNextOffset == 0);
   pop(a1);
   Add64(sp, sp,
-        Operand(
-            static_cast<int64_t>(StackHandlerConstants::kSize - kSystemPointerSize)));
+        Operand(static_cast<int64_t>(StackHandlerConstants::kSize -
+                                     kSystemPointerSize)));
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
   li(scratch,
@@ -3436,8 +3436,8 @@ void TurboAssembler::PrepareForTailCall(Register callee_args_count,
                                         Register caller_args_count,
                                         Register scratch0, Register scratch1) {
   // Calculate the end of destination area where we will put the arguments
-  // after we drop current frame. We add kSystemPointerSize to count the receiver
-  // argument which is not included into formal parameters count.
+  // after we drop current frame. We add kSystemPointerSize to count the
+  // receiver argument which is not included into formal parameters count.
   Register dst_reg = scratch0;
   CalcScaledAddress(dst_reg, fp, caller_args_count, kSystemPointerSizeLog2);
   Add64(dst_reg, dst_reg,
@@ -3643,7 +3643,8 @@ void MacroAssembler::InvokeFunctionCode(Register function, Register new_target,
   // allow recompilation to take effect without changing any of the
   // call sites.
   Register code = kJavaScriptCallCodeStartRegister;
-  LoadTaggedPointerField(code, FieldMemOperand(function, JSFunction::kCodeOffset));
+  LoadTaggedPointerField(code,
+                         FieldMemOperand(function, JSFunction::kCodeOffset));
   switch (type) {
     case InvokeType::kCall:
       CallCodeObject(code);
@@ -3668,7 +3669,8 @@ void MacroAssembler::InvokeFunctionWithNewTarget(
   DCHECK_EQ(function, a1);
   Register expected_parameter_count = a2;
   Register temp_reg = t0;
-  LoadTaggedPointerField(temp_reg, FieldMemOperand(a1, JSFunction::kSharedFunctionInfoOffset));
+  LoadTaggedPointerField(
+      temp_reg, FieldMemOperand(a1, JSFunction::kSharedFunctionInfoOffset));
   LoadTaggedPointerField(cp, FieldMemOperand(a1, JSFunction::kContextOffset));
   // The argument count is stored as uint16_t
   Lhu(expected_parameter_count,
@@ -3959,13 +3961,15 @@ void TurboAssembler::Abort(AbortReason reason) {
 }
 
 void TurboAssembler::LoadMap(Register destination, Register object) {
-  LoadTaggedPointerField(destination, FieldMemOperand(object, HeapObject::kMapOffset));
+  LoadTaggedPointerField(destination,
+                         FieldMemOperand(object, HeapObject::kMapOffset));
 }
 
 void MacroAssembler::LoadNativeContextSlot(Register dst, int index) {
   LoadMap(dst, cp);
-  LoadTaggedPointerField(dst,
-     FieldMemOperand(dst, Map::kConstructorOrBackPointerOrNativeContextOffset));
+  LoadTaggedPointerField(
+      dst, FieldMemOperand(
+               dst, Map::kConstructorOrBackPointerOrNativeContextOffset));
   LoadTaggedPointerField(dst, MemOperand(dst, Context::SlotOffset(index)));
 }
 
@@ -4002,7 +4006,8 @@ void MacroAssembler::EnterExitFrame(bool save_doubles, int stack_space,
          frame_type == StackFrame::BUILTIN_EXIT);
 
   // Set up the frame structure on the stack.
-  STATIC_ASSERT(2 * kSystemPointerSize == ExitFrameConstants::kCallerSPDisplacement);
+  STATIC_ASSERT(2 * kSystemPointerSize ==
+                ExitFrameConstants::kCallerSPDisplacement);
   STATIC_ASSERT(1 * kSystemPointerSize == ExitFrameConstants::kCallerPCOffset);
   STATIC_ASSERT(0 * kSystemPointerSize == ExitFrameConstants::kCallerFPOffset);
 
@@ -4016,7 +4021,8 @@ void MacroAssembler::EnterExitFrame(bool save_doubles, int stack_space,
   //   new stack (will contain saved ra)
 
   // Save registers and reserve room for saved entry sp.
-  addi(sp, sp, -2 * kSystemPointerSize - ExitFrameConstants::kFixedFrameSizeFromFp);
+  addi(sp, sp,
+       -2 * kSystemPointerSize - ExitFrameConstants::kFixedFrameSizeFromFp);
   Sd(ra, MemOperand(sp, 3 * kSystemPointerSize));
   Sd(fp, MemOperand(sp, 2 * kSystemPointerSize));
   {
@@ -4709,7 +4715,7 @@ void TurboAssembler::DecompressTaggedSigned(const Register& destination,
   if (FLAG_debug_code) {
     // Corrupt the top 32 bits. Made up of 16 fixed bits and 16 pc offset bits.
     Add64(destination, destination,
-        Operand(((kDebugZapValue << 16) | (pc_offset() & 0xffff)) << 32));
+          Operand(((kDebugZapValue << 16) | (pc_offset() & 0xffff)) << 32));
   }
   RecordComment("]");
 }

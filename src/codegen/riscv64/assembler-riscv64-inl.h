@@ -187,7 +187,7 @@ Handle<HeapObject> RelocInfo::target_object_handle(Assembler* origin) {
     return Handle<HeapObject>::cast(
         origin->code_target_object_handle_at(pc_, constant_pool_));
   } else if (IsCompressedEmbeddedObject(rmode_)) {
-      return origin->compressed_embedded_object_handle_at(pc_, constant_pool_);
+    return origin->compressed_embedded_object_handle_at(pc_, constant_pool_);
   } else if (IsFullEmbeddedObject(rmode_)) {
     return Handle<HeapObject>(reinterpret_cast<Address*>(
         Assembler::target_address_at(pc_, constant_pool_)));

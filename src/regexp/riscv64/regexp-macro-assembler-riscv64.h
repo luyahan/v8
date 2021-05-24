@@ -118,7 +118,8 @@ class V8_EXPORT_PRIVATE RegExpMacroAssemblerRISCV
   // When adding local variables remember to push space for them in
   // the frame in GetCode.
   static const int kSuccessfulCaptures = kInputString - kSystemPointerSize;
-  static const int kStringStartMinusOne = kSuccessfulCaptures - kSystemPointerSize;
+  static const int kStringStartMinusOne =
+      kSuccessfulCaptures - kSystemPointerSize;
   static const int kBacktrackCount = kStringStartMinusOne - kSystemPointerSize;
   // First register address. Following registers are below it on the stack.
   static const int kRegisterZero = kBacktrackCount - kSystemPointerSize;
