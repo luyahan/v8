@@ -1269,14 +1269,14 @@ T Simulator::ReadMem(int64_t addr, Instruction* instr) {
            addr, reinterpret_cast<intptr_t>(instr));
     DieOrDebug();
   }
-
+#ifndef V8_COMPRESS_POINTERS // TODO(RISCV): v8:11812
   // check for natural alignment
   if ((addr & (sizeof(T) - 1)) != 0) {
     PrintF("Unaligned read at 0x%08" PRIx64 " , pc=0x%08" V8PRIxPTR "\n", addr,
            reinterpret_cast<intptr_t>(instr));
     DieOrDebug();
   }
-
+#endif
   T* ptr = reinterpret_cast<T*>(addr);
   T value = *ptr;
   return value;
@@ -1291,14 +1291,14 @@ void Simulator::WriteMem(int64_t addr, T value, Instruction* instr) {
            addr, reinterpret_cast<intptr_t>(instr));
     DieOrDebug();
   }
-
+#ifndef V8_COMPRESS_POINTERS // TODO(RISCV): v8:11812
   // check for natural alignment
   if ((addr & (sizeof(T) - 1)) != 0) {
     PrintF("Unaligned write at 0x%08" PRIx64 " , pc=0x%08" V8PRIxPTR "\n", addr,
            reinterpret_cast<intptr_t>(instr));
     DieOrDebug();
   }
-
+#endif
   T* ptr = reinterpret_cast<T*>(addr);
   TraceMemWr(addr, value);
   *ptr = value;

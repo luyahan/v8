@@ -315,7 +315,7 @@ void MacroAssembler::RecordWrite(Register object, Register address,
                                  SmiCheck smi_check) {
   if (FLAG_debug_code) {
     DCHECK(!AreAliased(object, address, value, kScratchReg));
-    Ld(kScratchReg, MemOperand(address));
+    LoadTaggedPointerField(kScratchReg, MemOperand(address));
     Assert(eq, AbortReason::kWrongAddressOrValuePassedToRecordWrite,
            kScratchReg, Operand(value));
   }
@@ -4173,11 +4173,8 @@ void TurboAssembler::SmiUntag(Register dst, const MemOperand& src) {
     Lw(dst, MemOperand(src.rm(), SmiWordOffset(src.offset())));
   } else {
     DCHECK(SmiValuesAre31Bits());
-    Lw(dst, src);
-    SmiUntag(dst);
-
     if (COMPRESS_POINTERS_BOOL) {
-     Lw(dst, src);
+      Lw(dst, src);
     } else {
       Ld(dst, src);
     }
@@ -4708,14 +4705,19 @@ void TurboAssembler::StoreTaggedField(const Register& value,
 void TurboAssembler::DecompressTaggedSigned(const Register& destination,
                                             const MemOperand& field_operand) {
   RecordComment("[ DecompressTaggedSigned");
-  Lw(destination, field_operand);
+  Lwu(destination, field_operand);
+  if (FLAG_debug_code) {
+    // Corrupt the top 32 bits. Made up of 16 fixed bits and 16 pc offset bits.
+    Add64(destination, destination,
+        Operand(((kDebugZapValue << 16) | (pc_offset() & 0xffff)) << 32));
+  }
   RecordComment("]");
 }
 
 void TurboAssembler::DecompressTaggedPointer(const Register& destination,
                                              const MemOperand& field_operand) {
   RecordComment("[ DecompressTaggedPointer");
-  Lw(destination, field_operand);
+  Lwu(destination, field_operand);
   Add64(destination, kPtrComprCageBaseRegister, destination);
   RecordComment("]");
 }
@@ -4731,7 +4733,7 @@ void TurboAssembler::DecompressTaggedPointer(const Register& destination,
 void TurboAssembler::DecompressAnyTagged(const Register& destination,
                                          const MemOperand& field_operand) {
   RecordComment("[ DecompressAnyTagged");
-  Lw(destination, field_operand);
+  Lwu(destination, field_operand);
   Add64(destination, kPtrComprCageBaseRegister, destination);
   RecordComment("]");
 }

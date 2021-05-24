@@ -2492,7 +2492,7 @@ void Builtins::Generate_ConstructBoundFunction(MacroAssembler* masm) {
   __ AssertBoundFunction(a1);
 
   // Load [[BoundArguments]] into a2 and length of that into a4.
-  __ Ld(a2, FieldMemOperand(a1, JSBoundFunction::kBoundArgumentsOffset));
+  __ LoadTaggedPointerField(a2, FieldMemOperand(a1, JSBoundFunction::kBoundArgumentsOffset));
   __ SmiUntag(a4, FieldMemOperand(a2, FixedArray::kLengthOffset));
 
   // ----------- S t a t e -------------
