@@ -1848,37 +1848,38 @@ void VisitFullWord32Compare(InstructionSelector* selector, Node* node,
   VisitCompare(selector, opcode, leftOp, rightOp, cont);
 }
 
+#ifndef V8_COMPRESS_POINTERS
 void VisitOptimizedWord32Compare(InstructionSelector* selector, Node* node,
                                  InstructionCode opcode,
                                  FlagsContinuation* cont) {
-  // if (FLAG_debug_code) {
-  //   RiscvOperandGenerator g(selector);
-  //   InstructionOperand leftOp = g.TempRegister();
-  //   InstructionOperand rightOp = g.TempRegister();
-  //   InstructionOperand optimizedResult = g.TempRegister();
-  //   InstructionOperand fullResult = g.TempRegister();
-  //   FlagsCondition condition = cont->condition();
-  //   InstructionCode testOpcode = opcode |
-  //                                FlagsConditionField::encode(condition) |
-  //                                FlagsModeField::encode(kFlags_set);
+  if (FLAG_debug_code) {
+    RiscvOperandGenerator g(selector);
+    InstructionOperand leftOp = g.TempRegister();
+    InstructionOperand rightOp = g.TempRegister();
+    InstructionOperand optimizedResult = g.TempRegister();
+    InstructionOperand fullResult = g.TempRegister();
+    FlagsCondition condition = cont->condition();
+    InstructionCode testOpcode = opcode |
+                                 FlagsConditionField::encode(condition) |
+                                 FlagsModeField::encode(kFlags_set);
 
-  //   selector->Emit(testOpcode, optimizedResult, g.UseRegister(node->InputAt(0)),
-  //                  g.UseRegister(node->InputAt(1)));
+    selector->Emit(testOpcode, optimizedResult, g.UseRegister(node->InputAt(0)),
+                   g.UseRegister(node->InputAt(1)));
 
-  //   selector->Emit(kRiscvShl64, leftOp, g.UseRegister(node->InputAt(0)),
-  //                  g.TempImmediate(32));
-  //   selector->Emit(kRiscvShl64, rightOp, g.UseRegister(node->InputAt(1)),
-  //                  g.TempImmediate(32));
-  //   selector->Emit(testOpcode, fullResult, leftOp, rightOp);
+    selector->Emit(kRiscvShl64, leftOp, g.UseRegister(node->InputAt(0)),
+                   g.TempImmediate(32));
+    selector->Emit(kRiscvShl64, rightOp, g.UseRegister(node->InputAt(1)),
+                   g.TempImmediate(32));
+    selector->Emit(testOpcode, fullResult, leftOp, rightOp);
 
-  //   selector->Emit(kRiscvAssertEqual, g.NoOutput(), optimizedResult, fullResult,
-  //                  g.TempImmediate(static_cast<int>(
-  //                      AbortReason::kUnsupportedNonPrimitiveCompare)));
-  // }
+    selector->Emit(kRiscvAssertEqual, g.NoOutput(), optimizedResult, fullResult,
+                   g.TempImmediate(static_cast<int>(
+                       AbortReason::kUnsupportedNonPrimitiveCompare)));
+  }
 
   VisitWordCompare(selector, node, opcode, cont, false);
 }
-
+#endif
 void VisitWord32Compare(InstructionSelector* selector, Node* node,
                         FlagsContinuation* cont) {
   // RISC-V doesn't support Word32 compare instructions. Instead it relies
@@ -1897,6 +1898,7 @@ void VisitWord32Compare(InstructionSelector* selector, Node* node,
   // int32 value, the simulator do not sign-extended to int64 because in
   // simulator we do not know the function whether return a int32 or int64.
   // so we need do a full word32 compare in this case.
+#ifndef V8_COMPRESS_POINTERS
 #ifndef USE_SIMULATOR
   if (IsNodeUnsigned(node->InputAt(0)) != IsNodeUnsigned(node->InputAt(1))) {
 #else
@@ -1906,8 +1908,11 @@ void VisitWord32Compare(InstructionSelector* selector, Node* node,
 #endif
     VisitFullWord32Compare(selector, node, kRiscvCmp, cont);
   } else {
-    VisitOptimizedWord32Compare(selector, node, kRiscvCmp, cont);
+    VisitFullWord32Compare(selector, node, kRiscvCmp, cont);
   }
+#else
+  VisitFullWord32Compare(selector, node, kRiscvCmp, cont);
+#endif
 }
 
 void VisitWord64Compare(InstructionSelector* selector, Node* node,
