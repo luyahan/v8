@@ -158,7 +158,7 @@ void Builtins::Generate_JSConstructStubGeneric(MacroAssembler* masm) {
 
   // If not derived class constructor: Allocate the new receiver object.
   __ IncrementCounter(masm->isolate()->counters()->constructed_objects(), 1, t2,
-                      t0);
+                      t4);
   __ Call(BUILTIN_CODE(masm->isolate(), FastNewObject), RelocInfo::CODE_TARGET);
   __ Branch(&post_instantiation_deopt_entry);
 
@@ -1033,7 +1033,7 @@ static void MaybeOptimizeCodeOrTailCallOptimizedCodeSlot(
       optimization_marker,
       FieldMemOperand(feedback_vector,
                       FeedbackVector::kMaybeOptimizedCodeOffset));
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, a5);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, a5);
 }
 
 // static
@@ -1404,7 +1404,7 @@ void Builtins::Generate_InterpreterEntryTrampoline(MacroAssembler* masm) {
         FieldMemOperand(feedback_vector,
                         FeedbackVector::kMaybeOptimizedCodeOffset));
 
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, a5);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, a5);
   __ bind(&is_baseline);
   {
     // Load the feedback vector from the closure.
@@ -1803,7 +1803,7 @@ void Builtins::Generate_NotifyDeoptimized(MacroAssembler* masm) {
 
 void Builtins::Generate_TailCallOptimizedCodeSlot(MacroAssembler* masm) {
   Register optimized_code_entry = kJavaScriptCallCodeStartRegister;
-  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t0, t1);
+  TailCallOptimizedCodeSlot(masm, optimized_code_entry, t4, t0);
 }
 namespace {
 
@@ -2451,9 +2451,9 @@ void Builtins::Generate_Call(MacroAssembler* masm, ConvertReceiverMode mode) {
   __ JumpIfSmi(a1, &non_callable);
   __ bind(&non_smi);
   __ LoadMap(t1, a1);
-  __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t0);
+  __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t4);
   __ Jump(masm->isolate()->builtins()->CallFunction(mode),
-          RelocInfo::CODE_TARGET, Uless_equal, t0,
+          RelocInfo::CODE_TARGET, Uless_equal, t4,
           Operand(LAST_JS_FUNCTION_TYPE - FIRST_JS_FUNCTION_TYPE));
   __ Jump(BUILTIN_CODE(masm->isolate(), CallBoundFunction),
           RelocInfo::CODE_TARGET, eq, t2, Operand(JS_BOUND_FUNCTION_TYPE));
@@ -2608,9 +2608,9 @@ void Builtins::Generate_Construct(MacroAssembler* masm) {
 
   // Check if target has a [[Construct]] internal method.
   __ LoadTaggedPointerField(t1, FieldMemOperand(a1, HeapObject::kMapOffset));
-  __ Lbu(t0, FieldMemOperand(t1, Map::kBitFieldOffset));
-  __ And(t0, t0, Operand(Map::Bits1::IsConstructorBit::kMask));
-  __ Branch(&non_constructor, eq, t0, Operand(zero_reg));
+  __ Lbu(t4, FieldMemOperand(t1, Map::kBitFieldOffset));
+  __ And(t4, t4, Operand(Map::Bits1::IsConstructorBit::kMask));
+  __ Branch(&non_constructor, eq, t4, Operand(zero_reg));
 
   // Dispatch based on instance type.
   __ GetInstanceTypeRange(t1, t2, FIRST_JS_FUNCTION_TYPE, t0);

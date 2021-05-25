@@ -122,7 +122,8 @@ int TurboAssembler::PopCallerSaved(SaveFPRegsMode fp_mode, Register exclusion1,
 }
 
 void TurboAssembler::LoadRoot(Register destination, RootIndex index) {
-  Ld(destination, MemOperand(s6, RootRegisterOffsetForRootIndex(index)));
+  Ld(destination,
+     MemOperand(kRootRegister, RootRegisterOffsetForRootIndex(index)));
 }
 
 void TurboAssembler::LoadRoot(Register destination, RootIndex index,
@@ -130,7 +131,8 @@ void TurboAssembler::LoadRoot(Register destination, RootIndex index,
                               const Operand& src2) {
   Label skip;
   Branch(&skip, NegateCondition(cond), src1, src2);
-  Ld(destination, MemOperand(s6, RootRegisterOffsetForRootIndex(index)));
+  Ld(destination,
+     MemOperand(kRootRegister, RootRegisterOffsetForRootIndex(index)));
   bind(&skip);
 }
 
@@ -945,7 +947,7 @@ void TurboAssembler::ByteSwap(Register rd, Register rs, int operand_size) {
     DCHECK((rd != t6) && (rs != t6));
     Register x0 = temps.Acquire();
     Register x1 = temps.Acquire();
-    Register x2 = t6;
+    Register x2 = temps.Acquire();
     li(x1, 0x00FF00FF);
     slliw(x0, rs, 16);
     srliw(rd, rs, 16);
@@ -967,7 +969,7 @@ void TurboAssembler::ByteSwap(Register rd, Register rs, int operand_size) {
     DCHECK((rd != t6) && (rs != t6));
     Register x0 = temps.Acquire();
     Register x1 = temps.Acquire();
-    Register x2 = t6;
+    Register x2 = temps.Acquire();
     li(x1, 0x0000FFFF0000FFFFl);
     slli(x0, rs, 32);
     srli(rd, rs, 32);
@@ -1085,8 +1087,7 @@ void TurboAssembler::UnalignedFLoadHelper(FPURegister frd,
                         NBYTES - 1);
   }
   Register scratch_other = temps.Acquire();
-  Register scratch = t4;
-  push(t4);
+  Register scratch = temps.Acquire();
   DCHECK(scratch != rs.rm() && scratch_other != scratch &&
          scratch_other != rs.rm());
   LoadNBytes<NBYTES, true>(scratch, source, scratch_other);
@@ -1094,7 +1095,6 @@ void TurboAssembler::UnalignedFLoadHelper(FPURegister frd,
     fmv_w_x(frd, scratch);
   else
     fmv_d_x(frd, scratch);
-  pop(t4);
 }
 
 template <int NBYTES>
@@ -1892,12 +1892,12 @@ void TurboAssembler::RoundHelper(FPURegister dst, FPURegister src,
     bind(&not_NaN);
   }
 
-  // If real exponent (i.e., t6 - kFloatExponentBias) is greater than
+  // If real exponent (i.e., scratch2 - kFloatExponentBias) is greater than
   // kFloat32MantissaBits, it means the floating-point value has no fractional
   // part, thus the input is already rounded, jump to done. Note that, NaN and
   // Infinity in floating-point representation sets maximal exponent value, so
-  // they also satisfy (t6-kFloatExponentBias >= kFloatMantissaBits), and JS
-  // round semantics specify that rounding of NaN (Infinity) returns NaN
+  // they also satisfy (scratch2 - kFloatExponentBias >= kFloatMantissaBits),
+  // and JS round semantics specify that rounding of NaN (Infinity) returns NaN
   // (Infinity), so NaN and Infinity are considered rounded value too.
   Branch(&done, greater_equal, scratch2,
          Operand(kFloatExponentBias + kFloatMantissaBits));
@@ -2442,8 +2442,8 @@ void TurboAssembler::Popcnt32(Register rd, Register rs) {
   BlockTrampolinePoolScope block_trampoline_pool(this);
   Register scratch = temps.Acquire();
   Register scratch2 = temps.Acquire();
-  Register value = t6;
-  DCHECK((rd != t6) && (rs != t6));
+  Register value = temps.Acquire();
+  DCHECK((rd != value) && (rs != value));
   li(value, 0x01010101);     // value = 0x01010101;
   li(scratch2, 0x55555555);  // B0 = 0x55555555;
   Srl32(scratch, rs, 1);
@@ -2477,8 +2477,8 @@ void TurboAssembler::Popcnt64(Register rd, Register rs) {
   BlockTrampolinePoolScope block_trampoline_pool(this);
   Register scratch = temps.Acquire();
   Register scratch2 = temps.Acquire();
-  Register value = t6;
-  DCHECK((rd != t6) && (rs != t6));
+  Register value = temps.Acquire();
+  DCHECK((rd != value) && (rs != value));
   li(value, 0x1111111111111111l);  // value = 0x1111111111111111l;
   li(scratch2, 5);
   Mul64(scratch2, value, scratch2);  // B0 = 0x5555555555555555l;
@@ -3374,13 +3374,16 @@ void MacroAssembler::PushStackHandler() {
   Push(Smi::zero());  // Padding.
 
   // Link the current handler as the next handler.
-  li(t2,
+  UseScratchRegisterScope temps(this);
+  Register handler_address = temps.Acquire();
+  Register handler = temps.Acquire();
+  li(handler_address,
      ExternalReference::Create(IsolateAddressId::kHandlerAddress, isolate()));
-  Ld(t1, MemOperand(t2));
-  push(t1);
+  Ld(handler, MemOperand(handler_address));
+  push(handler);
 
   // Set this new handler as the current one.
-  Sd(sp, MemOperand(t2));
+  Sd(sp, MemOperand(handler_address));
 }
 
 void MacroAssembler::PopStackHandler() {
@@ -3534,7 +3537,11 @@ void MacroAssembler::InvokePrologue(Register expected_parameter_count,
   Branch(&regular_invoke, le, expected_parameter_count, Operand(zero_reg));
 
   Label stack_overflow;
-  StackOverflowCheck(expected_parameter_count, t0, t1, &stack_overflow);
+  {
+    UseScratchRegisterScope temps(this);
+    StackOverflowCheck(expected_parameter_count, temps.Acquire(),
+                       temps.Acquire(), &stack_overflow);
+  }
   // Underapplication. Move the arguments already in the stack, including the
   // receiver and the return address.
   {
@@ -3581,14 +3588,19 @@ void MacroAssembler::CheckDebugHook(Register fun, Register new_target,
                                     Register expected_parameter_count,
                                     Register actual_parameter_count) {
   Label skip_hook;
-
-  li(t0, ExternalReference::debug_hook_on_function_call_address(isolate()));
-  Lb(t0, MemOperand(t0));
-  Branch(&skip_hook, eq, t0, Operand(zero_reg));
-
+  {
+    UseScratchRegisterScope temps(this);
+    Register scratch = temps.Acquire();
+    li(scratch,
+       ExternalReference::debug_hook_on_function_call_address(isolate()));
+    Lb(scratch, MemOperand(scratch));
+    Branch(&skip_hook, eq, scratch, Operand(zero_reg));
+  }
   {
     // Load receiver to pass it later to DebugOnFunctionCall hook.
-    LoadReceiver(t0, actual_parameter_count);
+    UseScratchRegisterScope temps(this);
+    Register receiver = temps.Acquire();
+    LoadReceiver(receiver, actual_parameter_count);
 
     FrameScope frame(this,
                      has_frame() ? StackFrame::NONE : StackFrame::INTERNAL);
@@ -3603,7 +3615,7 @@ void MacroAssembler::CheckDebugHook(Register fun, Register new_target,
     }
     Push(fun);
     Push(fun);
-    Push(t0);
+    Push(receiver);
     CallRuntime(Runtime::kDebugOnFunctionCall);
     Pop(fun);
     if (new_target.is_valid()) {
@@ -3668,16 +3680,19 @@ void MacroAssembler::InvokeFunctionWithNewTarget(
   // Contract with called JS functions requires that function is passed in a1.
   DCHECK_EQ(function, a1);
   Register expected_parameter_count = a2;
-  Register temp_reg = t0;
+  UseScratchRegisterScope temps(this);
+  Register temp_reg = temps.Acquire();
   LoadTaggedPointerField(
-      temp_reg, FieldMemOperand(a1, JSFunction::kSharedFunctionInfoOffset));
-  LoadTaggedPointerField(cp, FieldMemOperand(a1, JSFunction::kContextOffset));
+      temp_reg,
+      FieldMemOperand(function, JSFunction::kSharedFunctionInfoOffset));
+  LoadTaggedPointerField(cp,
+                         FieldMemOperand(function, JSFunction::kContextOffset));
   // The argument count is stored as uint16_t
   Lhu(expected_parameter_count,
       FieldMemOperand(temp_reg,
                       SharedFunctionInfo::kFormalParameterCountOffset));
 
-  InvokeFunctionCode(a1, new_target, expected_parameter_count,
+  InvokeFunctionCode(function, new_target, expected_parameter_count,
                      actual_parameter_count, type);
 }
 
@@ -4249,8 +4264,10 @@ void MacroAssembler::AssertFunction(Register object) {
           Operand(zero_reg));
     push(object);
     LoadMap(object, object);
-    GetInstanceTypeRange(object, object, FIRST_JS_FUNCTION_TYPE, t5);
-    Check(Uless_equal, AbortReason::kOperandIsNotAFunction, t5,
+    UseScratchRegisterScope temps(this);
+    Register range = temps.Acquire();
+    GetInstanceTypeRange(object, object, FIRST_JS_FUNCTION_TYPE, range);
+    Check(Uless_equal, AbortReason::kOperandIsNotAFunction, range,
           Operand(LAST_JS_FUNCTION_TYPE - FIRST_JS_FUNCTION_TYPE));
     pop(object);
   }
@@ -4526,7 +4543,8 @@ void TurboAssembler::CallCFunctionHelper(Register function,
 
     if (isolate() != nullptr) {
       // We don't unset the PC; the FP is the source of truth.
-      Register scratch = t1;
+      UseScratchRegisterScope temps(this);
+      Register scratch = temps.Acquire();
       li(scratch, ExternalReference::fast_c_call_caller_fp_address(isolate()));
       Sd(zero_reg, MemOperand(scratch));
     }

@@ -13,22 +13,30 @@ namespace v8 {
 namespace internal {
 
 // clang-format off
+
 #define GENERAL_REGISTERS(V)                                            \
   V(zero_reg)  V(ra)  V(sp)  V(gp)  V(tp)  V(t0)  V(t1)  V(t2)          \
   V(fp)  V(s1)  V(a0)  V(a1)  V(a2)  V(a3)  V(a4)  V(a5)                \
   V(a6)  V(a7)  V(s2)  V(s3)  V(s4)  V(s5)  V(s6)  V(s7)  V(s8)  V(s9)  \
   V(s10)  V(s11)  V(t3)  V(t4)  V(t5)  V(t6)
 
+// s3: scratch register s4: scratch register 2  used in code-generator-riscv64
+// s6: roots in Javascript code s7: context register
+// s11: PtrComprCageBaseRegister
+// t3 t5 s10 : scratch register used in scratch_register_list
+
+// t0 t1 t2 t4:caller saved scratch register can be used in macroassembler and
+// builtin-riscv64
 #define ALWAYS_ALLOCATABLE_GENERAL_REGISTERS(V)  \
-  V(a0)  V(a1)  V(a2)  V(a3)              \
-  V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  V(t1) V(t2) V(s7)
+             V(a0)  V(a1)  V(a2)  V(a3) \
+             V(a4)  V(a5)  V(a6)  V(a7)  V(t0)  \
+             V(t1)  V(t2)  V(t4)  V(s7)  V(s8) V(s9)
 
 #ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
 #define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V)
 #else
-#define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V) V(t4)
+#define MAYBE_ALLOCATABLE_GENERAL_REGISTERS(V) V(s11)
 #endif
-
 
 #define ALLOCATABLE_GENERAL_REGISTERS(V)  \
   ALWAYS_ALLOCATABLE_GENERAL_REGISTERS(V) \
@@ -83,8 +91,8 @@ const int kNumJSCallerSaved = 12;
 const RegList kCalleeSaved = 1 << 8 |   // fp/s0
                              1 << 9 |   // s1
                              1 << 18 |  // s2
-                             1 << 19 |  // s3
-                             1 << 20 |  // s4
+                             1 << 19 |  // s3 scratch register
+                             1 << 20 |  // s4 scratch register 2
                              1 << 21 |  // s5
                              1 << 22 |  // s6 (roots in Javascript code)
                              1 << 23 |  // s7 (cp in Javascript code)
@@ -358,7 +366,7 @@ constexpr Register kWasmCompileLazyFuncIndexRegister = t0;
 constexpr DoubleRegister kFPReturnRegister0 = fa0;
 
 #ifdef V8_COMPRESS_POINTERS_IN_SHARED_CAGE
-constexpr Register kPtrComprCageBaseRegister = t4;  // callee save
+constexpr Register kPtrComprCageBaseRegister = s11;  // callee save
 #else
 constexpr Register kPtrComprCageBaseRegister = kRootRegister;
 #endif
