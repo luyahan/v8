@@ -312,6 +312,8 @@ bool Assembler::IsJump(Instr instr) {
   return Op == JAL || Op == JALR;
 }
 
+bool Assembler::IsNop(Instr instr) { return instr == kNopByte;}
+
 bool Assembler::IsJal(Instr instr) { return (instr & kBaseOpcodeMask) == JAL; }
 
 bool Assembler::IsJalr(Instr instr) {
@@ -542,8 +544,23 @@ void Assembler::target_at_put(int pos, int target_pos, bool is_internal) {
       instr_at_put(pos, instr);
     } break;
     case JAL: {
-      instr = SetJalOffset(pos, target_pos, instr);
-      instr_at_put(pos, instr);
+      Instr instr_I = instr_at(pos + 4);
+      if(IsNop(instr_I)) {
+        int64_t offset = target_pos - pos;
+        int32_t Hi20 = (((int32_t)offset + 0x800) >> 12);
+        int32_t Lo12 = (int32_t)offset << 20 >> 20;
+        Instr instr_auipc = AUIPC | (t6.code() << kRdShift) | (Hi20 << kImm20Shift);
+        Instr instr_jalr = JALR | (zero_reg.code() << kRdShift) |
+                           (0b000 << kFunct3Shift) | (t6.code() << kRs1Shift) |
+                           (Lo12 << kImm12Shift);
+        DCHECK_EQ(BrachlongOffset(instr_auipc, instr_jalr), offset);
+        instr_at_put(pos, instr_auipc);
+        instr_at_put(pos + 4, instr_jalr);
+      } else {
+        instr = SetJalOffset(pos, target_pos, instr);
+        instr_at_put(pos, instr);
+      }
+
     } break;
     case LUI: {
       Address pc = reinterpret_cast<Address>(buffer_start_ + pos);
@@ -556,19 +573,29 @@ void Assembler::target_at_put(int pos, int target_pos, bool is_internal) {
       DCHECK(IsJalr(instr_I) || IsAddi(instr_I));
 
       int64_t offset = target_pos - pos;
-      DCHECK(is_int32(offset));
+      if (is_int21(offset) && IsJalr(instr_I)) {
+        DCHECK(is_int21(offset) && ((offset & 1) == 0));
+        Instr instr = JAL;
+        instr = SetJalOffset(pos, target_pos, instr);
+        DCHECK(IsJal(instr));
+        DCHECK(JumpOffset(instr) == offset);
+        instr_at_put(pos, instr);
+        instr_at_put(pos + 4, 0x00000013);
+      } else {
+        DCHECK(is_int32(offset));
 
-      int32_t Hi20 = (((int32_t)offset + 0x800) >> 12);
-      int32_t Lo12 = (int32_t)offset << 20 >> 20;
+        int32_t Hi20 = (((int32_t)offset + 0x800) >> 12);
+        int32_t Lo12 = (int32_t)offset << 20 >> 20;
 
-      instr_auipc =
-          (instr_auipc & ~kImm31_12Mask) | ((Hi20 & kImm19_0Mask) << 12);
-      instr_at_put(pos, instr_auipc);
+        instr_auipc =
+            (instr_auipc & ~kImm31_12Mask) | ((Hi20 & kImm19_0Mask) << 12);
+        instr_at_put(pos, instr_auipc);
 
-      const int kImm31_20Mask = ((1 << 12) - 1) << 20;
-      const int kImm11_0Mask = ((1 << 12) - 1);
-      instr_I = (instr_I & ~kImm31_20Mask) | ((Lo12 & kImm11_0Mask) << 20);
-      instr_at_put(pos + 4, instr_I);
+        const int kImm31_20Mask = ((1 << 12) - 1) << 20;
+        const int kImm11_0Mask = ((1 << 12) - 1);
+        instr_I = (instr_I & ~kImm31_20Mask) | ((Lo12 & kImm11_0Mask) << 20);
+        instr_at_put(pos + 4, instr_I);
+      }
     } break;
     case RO_C_J: {
       ShortInstr short_instr = SetCJalOffset(pos, target_pos, instr);
@@ -733,6 +760,7 @@ int Assembler::BrachlongOffset(Instr auipc, Instr instr_I) {
   DCHECK(reinterpret_cast<Instruction*>(&instr_I)->InstructionType() ==
          InstructionBase::kIType);
   DCHECK(IsAuipc(auipc));
+  DCHECK_EQ((auipc & kRdFieldMask) >> kRdShift, (instr_I & kRs1FieldMask) >> kRs1Shift);
   int32_t imm_auipc = AuipcOffset(auipc);
   int32_t imm12 = (instr_I & kImm12Mask) >> 20;
   int32_t offset = imm12 + imm_auipc;

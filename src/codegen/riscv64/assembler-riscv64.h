@@ -883,6 +883,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase {
   // Check if an instruction is a branch of some kind.
   static bool IsBranch(Instr instr);
   static bool IsCBranch(Instr instr);
+  static bool IsNop(Instr instr);
   static bool IsJump(Instr instr);
   static bool IsJal(Instr instr);
   static bool IsCJal(Instr instr);
